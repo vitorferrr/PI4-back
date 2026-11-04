@@ -63,7 +63,70 @@ const listar = async (req, res) => {
   }
 };
 
+const buscarPorId = async (req, res) => {
+  try {
+    const visita = await visitaService.buscarPorId(req.params.id);
+
+    if (!visita) {
+      return res.status(404).json({
+        mensagem: "Visita não encontrada",
+      });
+    }
+
+    if (req.usuario?.role === "fiscalizador") {
+      const souFiscalizador = visita.fiscalizadores?.some(
+        (fiscalizador) => fiscalizador.id === req.usuario.id
+      );
+
+      if (!souFiscalizador) {
+        return res.status(403).json({
+          mensagem: "Usuário não possui permissão para acessar esta visita",
+        });
+      }
+    }
+
+    return res.status(200).json(visita);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao buscar visita");
+  }
+};
+
+const iniciar = async (req, res) => {
+  try {
+    const visita = await visitaService.iniciar(req.params.id);
+
+    if (!visita) {
+      return res.status(404).json({
+        mensagem: "Visita não encontrada",
+      });
+    }
+
+    return res.status(200).json(visita);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao iniciar visita");
+  }
+};
+
+const concluir = async (req, res) => {
+  try {
+    const visita = await visitaService.concluir(req.params.id);
+
+    if (!visita) {
+      return res.status(404).json({
+        mensagem: "Visita não encontrada",
+      });
+    }
+
+    return res.status(200).json(visita);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao concluir visita");
+  }
+};
+
 export default {
   criar,
   listar,
+  buscarPorId,
+  iniciar,
+  concluir,
 };

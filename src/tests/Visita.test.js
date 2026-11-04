@@ -209,6 +209,86 @@ describe("atualizar visita", () => {
   });
 });
 
+describe("iniciar visita", () => {
+  it("inicia uma visita agendada, define a data de realização e confirma a transação", async () => {
+    const visita = criarVisitaFalsa({ ...dadosVisita, status: "agendada" });
+    Visita.findByPk.mockResolvedValueOnce(visita).mockResolvedValueOnce({ id: 10 });
+
+    await visitaService.iniciar(10);
+
+    expect(visita.update).toHaveBeenCalledWith(
+      { status: "em_andamento", data_realizacao: expect.any(Date) },
+      { transaction: transacao }
+    );
+    expect(transacao.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejeita iniciar visita que não está agendada", async () => {
+    const visita = criarVisitaFalsa({ ...dadosVisita, status: "em_andamento" });
+    Visita.findByPk.mockResolvedValue(visita);
+
+    await expect(visitaService.iniciar(10)).rejects.toThrow(
+      "Somente visitas agendadas podem ser iniciadas"
+    );
+    expect(visita.update).not.toHaveBeenCalled();
+  });
+
+  it("retorna null quando a visita não existe", async () => {
+    Visita.findByPk.mockResolvedValue(null);
+
+    expect(await visitaService.iniciar(99)).toBeNull();
+  });
+
+  it("desfaz a transação quando a atualização falha", async () => {
+    const visita = criarVisitaFalsa({ ...dadosVisita, status: "agendada" });
+    visita.update.mockRejectedValue(new Error("erro"));
+    Visita.findByPk.mockResolvedValue(visita);
+
+    await expect(visitaService.iniciar(10)).rejects.toThrow();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("concluir visita", () => {
+  it("conclui uma visita em andamento e confirma a transação", async () => {
+    const visita = criarVisitaFalsa({ ...dadosVisita, status: "em_andamento" });
+    Visita.findByPk.mockResolvedValueOnce(visita).mockResolvedValueOnce({ id: 10 });
+
+    await visitaService.concluir(10);
+
+    expect(visita.update).toHaveBeenCalledWith(
+      { status: "concluida" },
+      { transaction: transacao }
+    );
+    expect(transacao.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejeita concluir visita que não está em andamento", async () => {
+    const visita = criarVisitaFalsa({ ...dadosVisita, status: "agendada" });
+    Visita.findByPk.mockResolvedValue(visita);
+
+    await expect(visitaService.concluir(10)).rejects.toThrow(
+      "Somente visitas em andamento podem ser concluídas"
+    );
+    expect(visita.update).not.toHaveBeenCalled();
+  });
+
+  it("retorna null quando a visita não existe", async () => {
+    Visita.findByPk.mockResolvedValue(null);
+
+    expect(await visitaService.concluir(99)).toBeNull();
+  });
+
+  it("desfaz a transação quando a atualização falha", async () => {
+    const visita = criarVisitaFalsa({ ...dadosVisita, status: "em_andamento" });
+    visita.update.mockRejectedValue(new Error("erro"));
+    Visita.findByPk.mockResolvedValue(visita);
+
+    await expect(visitaService.concluir(10)).rejects.toThrow();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("remover visita", () => {
   it("remove a visita encontrada", async () => {
     const visita = criarVisitaFalsa(dadosVisita);

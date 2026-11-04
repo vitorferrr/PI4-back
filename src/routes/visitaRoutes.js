@@ -19,4 +19,25 @@ router.get(
   visitaController.listar
 );
 
+router.get(
+  "/:id",
+  autenticar,
+  autorizar("admin", "gestor", "fiscalizador"),
+  visitaController.buscarPorId
+);
+
+router.put(
+  "/:id/iniciar",
+  autenticar,
+  autorizar("admin", "gestor", "fiscalizador"),
+  visitaController.iniciar
+);
+
+router.put(
+  "/:id/concluir",
+  autenticar,
+  autorizar("admin", "gestor", "fiscalizador"),
+  visitaController.concluir
+);
+
 export default router;

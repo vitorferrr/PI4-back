@@ -163,6 +163,59 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
   }
 };
 
+const iniciar = async (id) => {
+  const visita = await Visita.findByPk(id);
+
+  if (!visita) {
+    return null;
+  }
+
+  if (visita.status !== "agendada") {
+    throw erroValidacao("Somente visitas agendadas podem ser iniciadas");
+  }
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    await visita.update(
+      { status: "em_andamento", data_realizacao: new Date() },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    return await buscarPorId(id);
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+};
+
+const concluir = async (id) => {
+  const visita = await Visita.findByPk(id);
+
+  if (!visita) {
+    return null;
+  }
+
+  if (visita.status !== "em_andamento") {
+    throw erroValidacao("Somente visitas em andamento podem ser concluídas");
+  }
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    await visita.update({ status: "concluida" }, { transaction });
+
+    await transaction.commit();
+
+    return await buscarPorId(id);
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+};
+
 const remover = async (id) => {
   const visita = await Visita.findByPk(id);
 
@@ -180,5 +233,7 @@ export default {
   listar,
   buscarPorId,
   atualizar,
+  iniciar,
+  concluir,
   remover,
 };
