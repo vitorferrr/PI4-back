@@ -163,58 +163,41 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
   }
 };
 
-const iniciar = async (id) => {
-  const visita = await Visita.findByPk(id);
+// O status esperado faz parte do WHERE para que a checagem e a escrita sejam uma
+// única operação atômica: entre requisições simultâneas, apenas uma altera a linha.
+const transicionarStatus = async (id, statusEsperado, novosDados, mensagemErro) => {
+  const [afetadas] = await Visita.update(novosDados, {
+    where: { id, status: statusEsperado },
+  });
 
-  if (!visita) {
-    return null;
+  if (afetadas === 0) {
+    const visita = await Visita.findByPk(id);
+
+    if (!visita) {
+      return null;
+    }
+
+    throw erroValidacao(mensagemErro);
   }
 
-  if (visita.status !== "agendada") {
-    throw erroValidacao("Somente visitas agendadas podem ser iniciadas");
-  }
-
-  const transaction = await sequelize.transaction();
-
-  try {
-    await visita.update(
-      { status: "em_andamento", data_realizacao: new Date() },
-      { transaction }
-    );
-
-    await transaction.commit();
-
-    return await buscarPorId(id);
-  } catch (erro) {
-    await transaction.rollback();
-    throw erro;
-  }
+  return await buscarPorId(id);
 };
 
-const concluir = async (id) => {
-  const visita = await Visita.findByPk(id);
+const iniciar = async (id) =>
+  await transicionarStatus(
+    id,
+    "agendada",
+    { status: "em_andamento", data_realizacao: new Date() },
+    "Somente visitas agendadas podem ser iniciadas"
+  );
 
-  if (!visita) {
-    return null;
-  }
-
-  if (visita.status !== "em_andamento") {
-    throw erroValidacao("Somente visitas em andamento podem ser concluídas");
-  }
-
-  const transaction = await sequelize.transaction();
-
-  try {
-    await visita.update({ status: "concluida" }, { transaction });
-
-    await transaction.commit();
-
-    return await buscarPorId(id);
-  } catch (erro) {
-    await transaction.rollback();
-    throw erro;
-  }
-};
+const concluir = async (id) =>
+  await transicionarStatus(
+    id,
+    "em_andamento",
+    { status: "concluida" },
+    "Somente visitas em andamento podem ser concluídas"
+  );
 
 const remover = async (id) => {
   const visita = await Visita.findByPk(id);

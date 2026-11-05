@@ -1,29 +1,35 @@
 import visitaService from "../services/visitaService.js";
+import tratarErro from "../utils/tratarErro.js";
 
-const tratarErro = (res, erro, mensagem) => {
-  if (
-    erro.name === "SequelizeValidationError" ||
-    erro.name === "ValidacaoError"
-  ) {
-    return res.status(400).json({
-      mensagem,
-      erros: erro.errors
-        ? erro.errors.map((e) => e.message)
-        : [erro.message],
-    });
-  }
+const podeAcessarVisita = (usuario, visita) =>
+  usuario?.role !== "fiscalizador" ||
+  visita.fiscalizadores?.some((fiscalizador) => fiscalizador.id === usuario.id);
 
-  if (erro.name === "SequelizeForeignKeyConstraintError") {
-    return res.status(400).json({
-      mensagem: "Gestor ou fiscalizador informado não existe no sistema.",
-    });
-  }
-
-  console.error(erro);
-
-  return res.status(500).json({
-    mensagem,
+// Fiscalizador não associado recebe a mesma resposta de uma visita inexistente,
+// para que não seja possível descobrir quais ids existem.
+const responderNaoEncontrada = (res) =>
+  res.status(404).json({
+    mensagem: "Visita não encontrada",
   });
+
+const transicionar = (transicao, mensagemErro) => async (req, res) => {
+  try {
+    const visita = await visitaService.buscarPorId(req.params.id);
+
+    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
+    }
+
+    const visitaAtualizada = await transicao(req.params.id);
+
+    if (!visitaAtualizada) {
+      return responderNaoEncontrada(res);
+    }
+
+    return res.status(200).json(visitaAtualizada);
+  } catch (erro) {
+    return tratarErro(res, erro, mensagemErro);
+  }
 };
 
 const criar = async (req, res) => {
@@ -39,7 +45,12 @@ const criar = async (req, res) => {
 
     return res.status(201).json(visita);
   } catch (erro) {
-    return tratarErro(res, erro, "Erro ao criar visita");
+    return tratarErro(
+      res,
+      erro,
+      "Erro ao criar visita",
+      "Gestor ou fiscalizador informado não existe no sistema."
+    );
   }
 };
 
@@ -67,22 +78,8 @@ const buscarPorId = async (req, res) => {
   try {
     const visita = await visitaService.buscarPorId(req.params.id);
 
-    if (!visita) {
-      return res.status(404).json({
-        mensagem: "Visita não encontrada",
-      });
-    }
-
-    if (req.usuario?.role === "fiscalizador") {
-      const souFiscalizador = visita.fiscalizadores?.some(
-        (fiscalizador) => fiscalizador.id === req.usuario.id
-      );
-
-      if (!souFiscalizador) {
-        return res.status(403).json({
-          mensagem: "Usuário não possui permissão para acessar esta visita",
-        });
-      }
+    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
     }
 
     return res.status(200).json(visita);
@@ -91,37 +88,9 @@ const buscarPorId = async (req, res) => {
   }
 };
 
-const iniciar = async (req, res) => {
-  try {
-    const visita = await visitaService.iniciar(req.params.id);
+const iniciar = transicionar(visitaService.iniciar, "Erro ao iniciar visita");
 
-    if (!visita) {
-      return res.status(404).json({
-        mensagem: "Visita não encontrada",
-      });
-    }
-
-    return res.status(200).json(visita);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao iniciar visita");
-  }
-};
-
-const concluir = async (req, res) => {
-  try {
-    const visita = await visitaService.concluir(req.params.id);
-
-    if (!visita) {
-      return res.status(404).json({
-        mensagem: "Visita não encontrada",
-      });
-    }
-
-    return res.status(200).json(visita);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao concluir visita");
-  }
-};
+const concluir = transicionar(visitaService.concluir, "Erro ao concluir visita");
 
 export default {
   criar,

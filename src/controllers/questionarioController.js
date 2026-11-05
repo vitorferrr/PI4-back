@@ -1,4 +1,5 @@
 import questionarioService from "../services/questionarioService.js";
+import tratarErro from "../utils/tratarErro.js";
 
 const listar = async (req, res) => {
   try {
@@ -6,11 +7,7 @@ const listar = async (req, res) => {
 
     return res.status(200).json(perguntas);
   } catch (erro) {
-    console.error(erro);
-
-    return res.status(500).json({
-      mensagem: "Erro ao listar questionário",
-    });
+    return tratarErro(res, erro, "Erro ao listar questionário");
   }
 };
 
