@@ -18,6 +18,7 @@ vi.mock("../models/index.js", () => {
         create: vi.fn(),
         findAll: vi.fn(),
         findByPk: vi.fn(),
+        update: vi.fn(),
       },
       Usuario: {},
       Documento: {},
@@ -206,6 +207,82 @@ describe("atualizar visita", () => {
 
     expect(await visitaService.atualizar(99, { status: "concluida" })).toBeNull();
     expect(sequelize.transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("iniciar visita", () => {
+  it("atualiza condicionando ao status agendada e define a data de realização", async () => {
+    Visita.update.mockResolvedValue([1]);
+    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
+
+    const resultado = await visitaService.iniciar(10);
+
+    expect(Visita.update).toHaveBeenCalledWith(
+      { status: "em_andamento", data_realizacao: expect.any(Date) },
+      { where: { id: 10, status: "agendada" } }
+    );
+    expect(resultado).toEqual({ id: 10, status: "em_andamento" });
+  });
+
+  it("rejeita quando nenhuma linha é alterada e a visita existe, como em requisição simultânea", async () => {
+    Visita.update.mockResolvedValue([0]);
+    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
+
+    await expect(visitaService.iniciar(10)).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Somente visitas agendadas podem ser iniciadas",
+    });
+  });
+
+  it("retorna null quando a visita não existe", async () => {
+    Visita.update.mockResolvedValue([0]);
+    Visita.findByPk.mockResolvedValue(null);
+
+    expect(await visitaService.iniciar(99)).toBeNull();
+  });
+
+  it("propaga o erro quando a atualização falha", async () => {
+    Visita.update.mockRejectedValue(new Error("falha no banco"));
+
+    await expect(visitaService.iniciar(10)).rejects.toThrow("falha no banco");
+  });
+});
+
+describe("concluir visita", () => {
+  it("atualiza condicionando ao status em_andamento", async () => {
+    Visita.update.mockResolvedValue([1]);
+    Visita.findByPk.mockResolvedValue({ id: 10, status: "concluida" });
+
+    const resultado = await visitaService.concluir(10);
+
+    expect(Visita.update).toHaveBeenCalledWith(
+      { status: "concluida" },
+      { where: { id: 10, status: "em_andamento" } }
+    );
+    expect(resultado).toEqual({ id: 10, status: "concluida" });
+  });
+
+  it("rejeita quando nenhuma linha é alterada e a visita existe, como em requisição simultânea", async () => {
+    Visita.update.mockResolvedValue([0]);
+    Visita.findByPk.mockResolvedValue({ id: 10, status: "agendada" });
+
+    await expect(visitaService.concluir(10)).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Somente visitas em andamento podem ser concluídas",
+    });
+  });
+
+  it("retorna null quando a visita não existe", async () => {
+    Visita.update.mockResolvedValue([0]);
+    Visita.findByPk.mockResolvedValue(null);
+
+    expect(await visitaService.concluir(99)).toBeNull();
+  });
+
+  it("propaga o erro quando a atualização falha", async () => {
+    Visita.update.mockRejectedValue(new Error("falha no banco"));
+
+    await expect(visitaService.concluir(10)).rejects.toThrow("falha no banco");
   });
 });
 

@@ -163,6 +163,42 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
   }
 };
 
+// O status esperado faz parte do WHERE para que a checagem e a escrita sejam uma
+// única operação atômica: entre requisições simultâneas, apenas uma altera a linha.
+const transicionarStatus = async (id, statusEsperado, novosDados, mensagemErro) => {
+  const [afetadas] = await Visita.update(novosDados, {
+    where: { id, status: statusEsperado },
+  });
+
+  if (afetadas === 0) {
+    const visita = await Visita.findByPk(id);
+
+    if (!visita) {
+      return null;
+    }
+
+    throw erroValidacao(mensagemErro);
+  }
+
+  return await buscarPorId(id);
+};
+
+const iniciar = async (id) =>
+  await transicionarStatus(
+    id,
+    "agendada",
+    { status: "em_andamento", data_realizacao: new Date() },
+    "Somente visitas agendadas podem ser iniciadas"
+  );
+
+const concluir = async (id) =>
+  await transicionarStatus(
+    id,
+    "em_andamento",
+    { status: "concluida" },
+    "Somente visitas em andamento podem ser concluídas"
+  );
+
 const remover = async (id) => {
   const visita = await Visita.findByPk(id);
 
@@ -180,5 +216,7 @@ export default {
   listar,
   buscarPorId,
   atualizar,
+  iniciar,
+  concluir,
   remover,
 };
