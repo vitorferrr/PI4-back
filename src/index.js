@@ -12,6 +12,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(async (req, res, next) => {
+  try {
+    await ready;
+    next();
+  } catch {
+    return res.status(503).json({
+      mensagem: "Banco de dados indisponível",
+    });
+  }
+});
 
 app.use("/usuarios", usuarioRoutes);
 app.use("/auth", authRoutes);
@@ -23,14 +33,23 @@ app.get("/", (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-const eraseDatabaseOnSync = process.env.ERASE_DATABASE_ON_SYNC === "true";
+const eraseDatabaseOnSync =
+  process.env.ERASE_DATABASE_ON_SYNC === "true" && !process.env.VERCEL;
 
-sequelize
+const ready = sequelize
   .sync({ force: eraseDatabaseOnSync })
   .then(() => {
-    app.listen(port, () => console.log(`Servidor rodando na porta ${port}!`));
+    if (!process.env.VERCEL) {
+      app.listen(port, () => console.log(`Servidor rodando na porta ${port}!`));
+    }
   })
   .catch((erro) => {
     console.error("Erro ao conectar com o banco de dados:", erro.message);
-    process.exit(1);
+    if (!process.env.VERCEL) process.exit(1);
+    throw erro;
   });
+
+ready.catch(() => {});
+
+export { ready };
+export default app;
