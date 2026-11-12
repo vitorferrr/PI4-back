@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import models from "../models/index.js";
 import authService from "../services/authService.js";
+import authController from "../controllers/authController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 
@@ -173,5 +174,61 @@ describe("middleware autorizar", () => {
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe("authController.login", () => {
+  it("retorna 400 se email ou senha não forem fornecidos", async () => {
+    const req = { body: {} };
+    const res = criarRes();
+
+    await authController.login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      mensagem: "Email e senha são obrigatórios",
+    });
+  });
+
+  it("retorna 200 e o resultado quando o login for bem-sucedido", async () => {
+    const req = { body: { email: "bia@exemplo.com", senha: "123" } };
+    const res = criarRes();
+    const tokenMock = { token: "abc", usuario: { id: 1 } };
+
+    vi.spyOn(authService, "login").mockResolvedValueOnce(tokenMock);
+
+    await authController.login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(tokenMock);
+  });
+
+  it("retorna 401 quando o authService lança AutenticacaoError", async () => {
+    const req = { body: { email: "errado@exemplo.com", senha: "errada" } };
+    const res = criarRes();
+
+    const erro = new Error("E-mail ou senha inválidos");
+    erro.name = "AutenticacaoError";
+    
+    vi.spyOn(authService, "login").mockRejectedValueOnce(erro);
+
+    await authController.login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "E-mail ou senha inválidos" });
+  });
+
+  it("retorna 500 quando ocorre um erro genérico/inesperado", async () => {
+    const req = { body: { email: "bia@exemplo.com", senha: "123" } };
+    const res = criarRes();
+
+    vi.spyOn(authService, "login").mockRejectedValueOnce(new Error("Erro de banco"));
+
+    await authController.login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      mensagem: "Erro ao realizar login",
+    });
   });
 });
