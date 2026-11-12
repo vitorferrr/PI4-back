@@ -22,16 +22,21 @@ let urlBase;
 
 const tokenDe = (role, id = 5) => jwt.sign({ id, role }, SEGREDO);
 
-const requisitar = (metodo, caminho, role = "fiscalizador", id = 5) =>
+const requisitar = (metodo, caminho, role = "fiscalizador", id = 5, corpo) =>
   fetch(`${urlBase}${caminho}`, {
     method: metodo,
-    headers: { Authorization: `Bearer ${tokenDe(role, id)}` },
+    headers: {
+      Authorization: `Bearer ${tokenDe(role, id)}`,
+      "Content-Type": "application/json",
+    },
+    body: corpo ? JSON.stringify(corpo) : undefined,
   });
 
 beforeAll(async () => {
   vi.stubEnv("JWT_SECRET", SEGREDO);
 
   const app = express();
+  app.use(express.json());
   app.use("/visitas", visitaRoutes);
 
   await new Promise((resolve) => {
@@ -93,6 +98,177 @@ describe("GET /visitas/:id", () => {
     const resposta = await fetch(`${urlBase}/abc`);
 
     expect(resposta.status).toBe(401);
+  });
+});
+
+describe("POST /visitas", () => {
+  const dadosVisita = {
+    denunciado: "Mercado Bom Preço",
+    data_agendada: "2026-12-01T10:00:00Z",
+  };
+
+  const criarErro = (name, extras = {}) =>
+    Object.assign(new Error("erro do service"), { name, ...extras });
+
+  it("cria a visita, responde 201 e usa o gestor logado quando gestor_id não é enviado", async () => {
+    const visitaCriada = { id: 10, ...dadosVisita, gestor_id: 1 };
+    visitaService.criar.mockResolvedValue(visitaCriada);
+
+    const resposta = await requisitar("POST", "", "gestor", 1, dadosVisita);
+
+    expect(resposta.status).toBe(201);
+    expect(await resposta.json()).toEqual(visitaCriada);
+    expect(visitaService.criar).toHaveBeenCalledWith({ ...dadosVisita, gestor_id: 1 }, []);
+  });
+
+  it("mantém o gestor_id enviado no corpo", async () => {
+    visitaService.criar.mockResolvedValue({ id: 10 });
+
+    await requisitar("POST", "", "admin", 1, { ...dadosVisita, gestor_id: 2 });
+
+    expect(visitaService.criar).toHaveBeenCalledWith({ ...dadosVisita, gestor_id: 2 }, []);
+  });
+
+  it("repassa fiscalizadores_ids separados dos dados da visita", async () => {
+    visitaService.criar.mockResolvedValue({ id: 10 });
+
+    await requisitar("POST", "", "gestor", 1, { ...dadosVisita, fiscalizadores_ids: [5, 6] });
+
+    expect(visitaService.criar).toHaveBeenCalledWith({ ...dadosVisita, gestor_id: 1 }, [5, 6]);
+  });
+
+  it("aceita o campo fiscalizadores como alternativa a fiscalizadores_ids", async () => {
+    visitaService.criar.mockResolvedValue({ id: 10 });
+
+    await requisitar("POST", "", "gestor", 1, { ...dadosVisita, fiscalizadores: [7] });
+
+    expect(visitaService.criar).toHaveBeenCalledWith({ ...dadosVisita, gestor_id: 1 }, [7]);
+  });
+
+  it("da preferência a fiscalizadores_ids quando os dois campos são enviados", async () => {
+    visitaService.criar.mockResolvedValue({ id: 10 });
+
+    await requisitar("POST", "", "gestor", 1, {
+      ...dadosVisita,
+      fiscalizadores_ids: [5],
+      fiscalizadores: [7],
+    });
+
+    expect(visitaService.criar).toHaveBeenCalledWith({ ...dadosVisita, gestor_id: 1 }, [5]);
+  });
+
+  it("responde 403 para fiscalizador sem chamar o service", async () => {
+    const resposta = await requisitar("POST", "", "fiscalizador", 5, dadosVisita);
+
+    expect(resposta.status).toBe(403);
+    expect(visitaService.criar).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o service rejeita os dados", async () => {
+    visitaService.criar.mockRejectedValue(criarErro("ValidacaoError"));
+
+    const resposta = await requisitar("POST", "", "gestor", 1, dadosVisita);
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Erro ao criar visita",
+      erros: ["erro do service"],
+    });
+  });
+
+  it("responde 400 com a lista de erros de validação do Sequelize", async () => {
+    visitaService.criar.mockRejectedValue(
+      criarErro("SequelizeValidationError", {
+        errors: [{ message: "denunciado vazio" }, { message: "data inválida" }],
+      })
+    );
+
+    const resposta = await requisitar("POST", "", "gestor", 1, dadosVisita);
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Erro ao criar visita",
+      erros: ["denunciado vazio", "data inválida"],
+    });
+  });
+
+  it("responde 400 quando o gestor ou fiscalizador informado não existe", async () => {
+    visitaService.criar.mockRejectedValue(criarErro("SequelizeForeignKeyConstraintError"));
+
+    const resposta = await requisitar("POST", "", "gestor", 1, {
+      ...dadosVisita,
+      fiscalizadores_ids: [999],
+    });
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Gestor ou fiscalizador informado não existe no sistema.",
+    });
+  });
+});
+
+describe("GET /visitas", () => {
+  it("restringe o fiscalizador às próprias visitas", async () => {
+    visitaService.listar.mockResolvedValue([visitaDoFiscalizador5]);
+
+    const resposta = await requisitar("GET", "");
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual([visitaDoFiscalizador5]);
+    expect(visitaService.listar).toHaveBeenCalledWith({
+      status: undefined,
+      gestor_id: undefined,
+      fiscalizador_id: 5,
+    });
+  });
+
+  it("ignora o fiscalizador_id da query quando quem pede é fiscalizador", async () => {
+    visitaService.listar.mockResolvedValue([]);
+
+    await requisitar("GET", "?fiscalizador_id=6&status=agendada");
+
+    expect(visitaService.listar).toHaveBeenCalledWith({
+      status: "agendada",
+      gestor_id: undefined,
+      fiscalizador_id: 5,
+    });
+  });
+
+  it.each(["admin", "gestor"])("repassa os filtros da query sem alteração para %s", async (role) => {
+    visitaService.listar.mockResolvedValue([]);
+
+    const resposta = await requisitar(
+      "GET",
+      "?status=concluida&gestor_id=2&fiscalizador_id=6",
+      role,
+      1
+    );
+
+    expect(resposta.status).toBe(200);
+    expect(visitaService.listar).toHaveBeenCalledWith({
+      status: "concluida",
+      gestor_id: "2",
+      fiscalizador_id: "6",
+    });
+  });
+
+  it.each(["admin", "gestor"])("lista sem filtros para %s quando a query está vazia", async (role) => {
+    visitaService.listar.mockResolvedValue([]);
+
+    await requisitar("GET", "", role, 1);
+
+    expect(visitaService.listar).toHaveBeenCalledWith({
+      status: undefined,
+      gestor_id: undefined,
+      fiscalizador_id: undefined,
+    });
+  });
+
+  it("exige autenticação", async () => {
+    const resposta = await fetch(urlBase);
+
+    expect(resposta.status).toBe(401);
+    expect(visitaService.listar).not.toHaveBeenCalled();
   });
 });
 

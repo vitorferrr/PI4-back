@@ -341,3 +341,45 @@ describe("validações do modelo Visita", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("associações do modelo Visita", () => {
+  it("configura as associações com Usuario, VisitaFiscalizador, RespostaQuestionario e Documento", () => {
+    const modelsMock = {
+      Usuario: { name: "Usuario" },
+      VisitaFiscalizador: { name: "VisitaFiscalizador" },
+      RespostaQuestionario: { name: "RespostaQuestionario" },
+      Documento: { name: "Documento" },
+    };
+
+    const belongsToSpy = vi.spyOn(VisitaModelo, "belongsTo").mockImplementation(() => {});
+    const belongsToManySpy = vi.spyOn(VisitaModelo, "belongsToMany").mockImplementation(() => {});
+    const hasManySpy = vi.spyOn(VisitaModelo, "hasMany").mockImplementation(() => {});
+
+    VisitaModelo.associate(modelsMock);
+
+    expect(belongsToSpy).toHaveBeenCalledWith(modelsMock.Usuario, {
+      foreignKey: "gestor_id",
+      as: "gestor",
+      onDelete: "RESTRICT",
+    });
+
+    expect(belongsToManySpy).toHaveBeenCalledWith(modelsMock.Usuario, {
+      through: modelsMock.VisitaFiscalizador,
+      foreignKey: "visita_id",
+      otherKey: "fiscalizador_id",
+      as: "fiscalizadores",
+    });
+
+    expect(hasManySpy).toHaveBeenCalledWith(modelsMock.RespostaQuestionario, {
+      foreignKey: "visita_id",
+      as: "respostas",
+      onDelete: "CASCADE",
+    });
+
+    expect(hasManySpy).toHaveBeenCalledWith(modelsMock.Documento, {
+      foreignKey: "visita_id",
+      as: "documentos",
+      onDelete: "CASCADE",
+    });
+  });
+});

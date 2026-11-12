@@ -3,6 +3,7 @@ import Sequelize from "sequelize";
 import pg from "pg";
 import models from "../models/index.js";
 import questionarioService from "../services/questionarioService.js";
+import questionarioController from "../controllers/questionarioController.js";
 import getPerguntaQuestionarioModel from "../models/perguntaQuestionario.js";
 
 vi.mock("../models/index.js", () => ({
@@ -28,8 +29,16 @@ const dadosPergunta = {
   ordem: 1,
 };
 
+const criarRes = () => {
+  const res = {};
+  res.status = vi.fn(() => res);
+  res.json = vi.fn(() => res);
+  return res;
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 describe("listar questionário", () => {
@@ -43,6 +52,35 @@ describe("listar questionário", () => {
       order: [["ordem", "ASC"]],
     });
     expect(resultado).toEqual(perguntas);
+  });
+});
+
+describe("questionarioController.listar", () => {
+  it("retorna 200 e a lista de perguntas quando bem-sucedido", async () => {
+    const req = {};
+    const res = criarRes();
+    const perguntas = [{ id: 1, texto: "Pergunta 1", ordem: 1 }];
+
+    vi.spyOn(questionarioService, "listar").mockResolvedValueOnce(perguntas);
+
+    await questionarioController.listar(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(perguntas);
+  });
+
+  it("retorna 500 quando ocorre um erro ao listar", async () => {
+    const req = {};
+    const res = criarRes();
+
+    vi.spyOn(questionarioService, "listar").mockRejectedValueOnce(new Error("Erro de banco"));
+
+    await questionarioController.listar(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      mensagem: "Erro ao listar questionário",
+    });
   });
 });
 
