@@ -237,3 +237,30 @@ describe("remover usuário", () => {
     expect(await usuarioService.remover(99)).toBeNull();
   });
 });
+
+describe("associações do modelo Usuario", () => {
+  it("configura as associações com Visita e VisitaFiscalizador", () => {
+    const modelsMock = {
+      Visita: { name: "Visita" },
+      VisitaFiscalizador: { name: "VisitaFiscalizador" },
+    };
+
+    const hasManySpy = vi.spyOn(UsuarioModelo, "hasMany").mockImplementation(() => {});
+    const belongsToManySpy = vi.spyOn(UsuarioModelo, "belongsToMany").mockImplementation(() => {});
+
+    UsuarioModelo.associate(modelsMock);
+
+    expect(hasManySpy).toHaveBeenCalledWith(modelsMock.Visita, {
+      foreignKey: "gestor_id",
+      as: "visitasGerenciadas",
+      onDelete: "RESTRICT",
+    });
+
+    expect(belongsToManySpy).toHaveBeenCalledWith(modelsMock.Visita, {
+      through: modelsMock.VisitaFiscalizador,
+      foreignKey: "fiscalizador_id",
+      otherKey: "visita_id",
+      as: "visitasFiscalizadas",
+    });
+  });
+});
