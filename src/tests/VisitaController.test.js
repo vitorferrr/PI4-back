@@ -96,6 +96,71 @@ describe("GET /visitas/:id", () => {
   });
 });
 
+describe("GET /visitas", () => {
+  it("restringe o fiscalizador às próprias visitas", async () => {
+    visitaService.listar.mockResolvedValue([visitaDoFiscalizador5]);
+
+    const resposta = await requisitar("GET", "");
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual([visitaDoFiscalizador5]);
+    expect(visitaService.listar).toHaveBeenCalledWith({
+      status: undefined,
+      gestor_id: undefined,
+      fiscalizador_id: 5,
+    });
+  });
+
+  it("ignora o fiscalizador_id da query quando quem pede é fiscalizador", async () => {
+    visitaService.listar.mockResolvedValue([]);
+
+    await requisitar("GET", "?fiscalizador_id=6&status=agendada");
+
+    expect(visitaService.listar).toHaveBeenCalledWith({
+      status: "agendada",
+      gestor_id: undefined,
+      fiscalizador_id: 5,
+    });
+  });
+
+  it.each(["admin", "gestor"])("repassa os filtros da query sem alteração para %s", async (role) => {
+    visitaService.listar.mockResolvedValue([]);
+
+    const resposta = await requisitar(
+      "GET",
+      "?status=concluida&gestor_id=2&fiscalizador_id=6",
+      role,
+      1
+    );
+
+    expect(resposta.status).toBe(200);
+    expect(visitaService.listar).toHaveBeenCalledWith({
+      status: "concluida",
+      gestor_id: "2",
+      fiscalizador_id: "6",
+    });
+  });
+
+  it.each(["admin", "gestor"])("lista sem filtros para %s quando a query está vazia", async (role) => {
+    visitaService.listar.mockResolvedValue([]);
+
+    await requisitar("GET", "", role, 1);
+
+    expect(visitaService.listar).toHaveBeenCalledWith({
+      status: undefined,
+      gestor_id: undefined,
+      fiscalizador_id: undefined,
+    });
+  });
+
+  it("exige autenticação", async () => {
+    const resposta = await fetch(urlBase);
+
+    expect(resposta.status).toBe(401);
+    expect(visitaService.listar).not.toHaveBeenCalled();
+  });
+});
+
 describe.each([
   ["iniciar", "Erro ao iniciar visita"],
   ["concluir", "Erro ao concluir visita"],
