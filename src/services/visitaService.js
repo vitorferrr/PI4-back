@@ -183,13 +183,39 @@ const transicionarStatus = async (id, statusEsperado, novosDados, mensagemErro) 
   return await buscarPorId(id);
 };
 
-const iniciar = async (id) =>
-  await transicionarStatus(
+const coordenadaValida = (valor, limite) =>
+  typeof valor === "number" && Number.isFinite(valor) && Math.abs(valor) <= limite;
+
+const validarCoordenadas = ({ latitude, longitude } = {}) => {
+  const erros = [];
+
+  if (!coordenadaValida(latitude, 90)) {
+    erros.push("A latitude deve ser um número entre -90 e 90");
+  }
+
+  if (!coordenadaValida(longitude, 180)) {
+    erros.push("A longitude deve ser um número entre -180 e 180");
+  }
+
+  if (erros.length > 0) {
+    const erro = erroValidacao(erros[0]);
+    erro.errors = erros.map((message) => ({ message }));
+    throw erro;
+  }
+
+  return { latitude, longitude };
+};
+
+const iniciar = async (id, coordenadas) => {
+  const { latitude, longitude } = validarCoordenadas(coordenadas);
+
+  return await transicionarStatus(
     id,
     "agendada",
-    { status: "em_andamento", data_realizacao: new Date() },
+    { status: "em_andamento", data_realizacao: new Date(), latitude, longitude },
     "Somente visitas agendadas podem ser iniciadas"
   );
+};
 
 const concluir = async (id) =>
   await transicionarStatus(
