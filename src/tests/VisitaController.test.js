@@ -283,7 +283,7 @@ describe.each([
     const resposta = await requisitar("PATCH", `/10/${acao}`);
 
     expect(resposta.status).toBe(200);
-    expect(visitaService[acao]).toHaveBeenCalledWith("10");
+    expect(visitaService[acao].mock.calls[0][0]).toBe("10");
   });
 
   it("responde 404 e não altera a visita para fiscalizador não associado", async () => {
@@ -349,6 +349,38 @@ describe.each([
 
     expect(resposta.status).toBe(404);
     expect(visitaService[acao]).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /visitas/:id/iniciar com localização", () => {
+  it("repassa a latitude e a longitude do corpo para o service", async () => {
+    const coordenadas = { latitude: -8.1127, longitude: -35.0147 };
+    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.iniciar.mockResolvedValue({ id: 10, ...coordenadas });
+
+    const resposta = await requisitar("PATCH", "/10/iniciar", "fiscalizador", 5, coordenadas);
+
+    expect(resposta.status).toBe(200);
+    expect(visitaService.iniciar).toHaveBeenCalledWith("10", coordenadas);
+  });
+
+  it("responde 400 com os erros quando a localização é inválida", async () => {
+    const erro = new Error("A latitude deve ser um número entre -90 e 90");
+    erro.name = "ValidacaoError";
+    erro.errors = [{ message: "A latitude deve ser um número entre -90 e 90" }];
+    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.iniciar.mockRejectedValue(erro);
+
+    const resposta = await requisitar("PATCH", "/10/iniciar", "fiscalizador", 5, {
+      latitude: 200,
+      longitude: -35,
+    });
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Erro ao iniciar visita",
+      erros: ["A latitude deve ser um número entre -90 e 90"],
+    });
   });
 });
 
