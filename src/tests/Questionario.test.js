@@ -205,13 +205,27 @@ describe("salvar respostas do questionário", () => {
     ).rejects.toMatchObject({
       message: "Há respostas inválidas",
       errors: [
-        { message: 'Resposta da pergunta 1 deve ser "Sim" ou "Não"' },
+        { message: 'Resposta da pergunta 1 deve ser "Sim", "Não" ou "Não se aplica"' },
         { message: "Resposta da pergunta 2 deve ser um número" },
         { message: "Resposta da pergunta 3 deve ser uma data válida no formato DD/MM/AAAA" },
         { message: "A pergunta 99 não existe" },
       ],
     });
     expect(sequelize.transaction).not.toHaveBeenCalled();
+  });
+
+  it('aceita "Não se aplica" nas perguntas de sim ou não', async () => {
+    PerguntaQuestionario.findAll.mockResolvedValue(perguntas);
+    RespostaQuestionario.findAll.mockResolvedValue([]);
+
+    await questionarioService.salvarRespostas(visitaEmAndamento, [
+      { pergunta_id: 1, resposta: "Não se aplica" },
+    ]);
+
+    expect(RespostaQuestionario.upsert).toHaveBeenCalledWith(
+      { visita_id: 10, pergunta_id: 1, resposta: "Não se aplica" },
+      expect.anything()
+    );
   });
 
   it("desfaz a transação quando uma gravação falha", async () => {

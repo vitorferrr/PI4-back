@@ -12,8 +12,8 @@ const erroValidacao = (mensagem, erros = [mensagem]) => {
 
 const FORMATOS = {
   sim_nao: {
-    valido: (valor) => valor === "Sim" || valor === "Não",
-    mensagem: 'deve ser "Sim" ou "Não"',
+    valido: (valor) => ["Sim", "Não", "Não se aplica"].includes(valor),
+    mensagem: 'deve ser "Sim", "Não" ou "Não se aplica"',
   },
   numero: {
     valido: (valor) => /^-?\d+([.,]\d+)?$/.test(valor),
