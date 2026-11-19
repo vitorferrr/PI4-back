@@ -28,6 +28,7 @@
     "dotenv": "^18.0.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "sequelize": "^6.37.8"
   },
