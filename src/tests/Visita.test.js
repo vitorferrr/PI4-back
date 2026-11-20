@@ -232,13 +232,17 @@ describe("atualizar visita", () => {
 
 describe("iniciar visita", () => {
   const coordenadas = { latitude: -8.1127, longitude: -35.0147 };
+  const visitaAgendada = { id: 10, status: "agendada" };
 
-  it("atualiza condicionando ao status agendada e grava a data e a localização", async () => {
+  it("confere o status, grava a data e a localização condicionando ao status agendada", async () => {
+    Visita.findByPk
+      .mockResolvedValueOnce(visitaAgendada)
+      .mockResolvedValueOnce({ id: 10, status: "em_andamento" });
     Visita.update.mockResolvedValue([1]);
-    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
 
     const resultado = await visitaService.iniciar(10, coordenadas);
 
+    expect(Visita.findByPk).toHaveBeenNthCalledWith(1, 10, { attributes: ["id", "status"] });
     expect(Visita.update).toHaveBeenCalledWith(
       {
         status: "em_andamento",
@@ -252,8 +256,8 @@ describe("iniciar visita", () => {
   });
 
   it("aceita os limites extremos das coordenadas", async () => {
+    Visita.findByPk.mockResolvedValue(visitaAgendada);
     Visita.update.mockResolvedValue([1]);
-    Visita.findByPk.mockResolvedValue({ id: 10 });
 
     await visitaService.iniciar(10, { latitude: -90, longitude: 180 });
 
@@ -272,6 +276,8 @@ describe("iniciar visita", () => {
     ["longitude abaixo de -180", { latitude: -8, longitude: -180.1 }],
     ["valor não finito", { latitude: Number.NaN, longitude: -35 }],
   ])("rejeita coordenadas inválidas (%s) sem alterar a visita", async (_caso, dados) => {
+    Visita.findByPk.mockResolvedValue(visitaAgendada);
+
     await expect(visitaService.iniciar(10, dados)).rejects.toMatchObject({
       name: "ValidacaoError",
     });
@@ -279,6 +285,8 @@ describe("iniciar visita", () => {
   });
 
   it("lista os dois erros quando latitude e longitude são inválidas", async () => {
+    Visita.findByPk.mockResolvedValue(visitaAgendada);
+
     await expect(visitaService.iniciar(10, {})).rejects.toMatchObject({
       errors: [
         { message: "A latitude deve ser um número entre -90 e 90" },
@@ -287,9 +295,31 @@ describe("iniciar visita", () => {
     });
   });
 
+  it.each(["em_andamento", "concluida", "cancelada"])(
+    "responde o erro de status, e não o de localização, para visita %s",
+    async (status) => {
+      Visita.findByPk.mockResolvedValue({ id: 10, status });
+
+      await expect(visitaService.iniciar(10, undefined)).rejects.toMatchObject({
+        name: "ValidacaoError",
+        message: "Somente visitas agendadas podem ser iniciadas",
+      });
+      expect(Visita.update).not.toHaveBeenCalled();
+    }
+  );
+
+  it("retorna null quando a visita não existe, sem validar a localização", async () => {
+    Visita.findByPk.mockResolvedValue(null);
+
+    expect(await visitaService.iniciar(99, undefined)).toBeNull();
+    expect(Visita.update).not.toHaveBeenCalled();
+  });
+
   it("rejeita quando nenhuma linha é alterada e a visita existe, como em requisição simultânea", async () => {
+    Visita.findByPk
+      .mockResolvedValueOnce(visitaAgendada)
+      .mockResolvedValueOnce({ id: 10, status: "em_andamento" });
     Visita.update.mockResolvedValue([0]);
-    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
 
     await expect(visitaService.iniciar(10, coordenadas)).rejects.toMatchObject({
       name: "ValidacaoError",
@@ -297,14 +327,8 @@ describe("iniciar visita", () => {
     });
   });
 
-  it("retorna null quando a visita não existe", async () => {
-    Visita.update.mockResolvedValue([0]);
-    Visita.findByPk.mockResolvedValue(null);
-
-    expect(await visitaService.iniciar(99, coordenadas)).toBeNull();
-  });
-
   it("propaga o erro quando a atualização falha", async () => {
+    Visita.findByPk.mockResolvedValue(visitaAgendada);
     Visita.update.mockRejectedValue(new Error("falha no banco"));
 
     await expect(visitaService.iniciar(10, coordenadas)).rejects.toThrow("falha no banco");

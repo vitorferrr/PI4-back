@@ -302,15 +302,6 @@ describe.each([
     expect(visitaService[acao]).not.toHaveBeenCalled();
   });
 
-  it("permite que gestor aplique a transição sem estar associado", async () => {
-    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
-    visitaService[acao].mockResolvedValue({ id: 10 });
-
-    const resposta = await requisitar("PATCH", `/10/${acao}`, "gestor", 1);
-
-    expect(resposta.status).toBe(200);
-  });
-
   it("responde 404 quando a visita não existe", async () => {
     visitaService.buscarPorId.mockResolvedValue(null);
 
@@ -356,6 +347,27 @@ describe.each([
 
     expect(resposta.status).toBe(404);
     expect(visitaService[acao]).not.toHaveBeenCalled();
+  });
+});
+
+describe("perfis que podem iniciar e concluir", () => {
+  it("permite que gestor conclua a visita sem estar associado", async () => {
+    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.concluir.mockResolvedValue({ id: 10 });
+
+    const resposta = await requisitar("PATCH", "/10/concluir", "gestor", 1);
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it.each(["gestor", "admin"])("responde 403 quando %s tenta iniciar a visita", async (role) => {
+    const resposta = await requisitar("PATCH", "/10/iniciar", role, 1, {
+      latitude: -8.1,
+      longitude: -35,
+    });
+
+    expect(resposta.status).toBe(403);
+    expect(visitaService.iniciar).not.toHaveBeenCalled();
   });
 });
 

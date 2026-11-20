@@ -32,7 +32,7 @@ router.get(
 router.patch(
   "/:id/iniciar",
   autenticar,
-  autorizar("admin", "gestor", "fiscalizador"),
+  autorizar("fiscalizador"),
   validarId,
   visitaController.iniciar
 );

@@ -212,14 +212,26 @@ const validarCoordenadas = ({ latitude, longitude } = {}) => {
   return { latitude, longitude };
 };
 
+const MENSAGEM_SO_AGENDADAS = "Somente visitas agendadas podem ser iniciadas";
+
 const iniciar = async (id, coordenadas) => {
+  const visita = await Visita.findByPk(id, { attributes: ["id", "status"] });
+
+  if (!visita) {
+    return null;
+  }
+
+  if (visita.status !== "agendada") {
+    throw erroValidacao(MENSAGEM_SO_AGENDADAS);
+  }
+
   const { latitude, longitude } = validarCoordenadas(coordenadas);
 
   return await transicionarStatus(
     id,
     "agendada",
     { status: "em_andamento", data_realizacao: new Date(), latitude, longitude },
-    "Somente visitas agendadas podem ser iniciadas"
+    MENSAGEM_SO_AGENDADAS
   );
 };
 
