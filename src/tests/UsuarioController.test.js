@@ -64,7 +64,12 @@ const rotas = [
 ];
 
 describe.each(rotas)("%s /usuarios%s", (metodo, caminho, funcaoService, permitidos, bloqueados) => {
-  const corpo = metodo === "POST" || metodo === "PUT" ? { nome: "Bia" } : undefined;
+  const corpo =
+    metodo === "POST"
+      ? { nome: "Bia", email: "bia@exemplo.com", senha: "123456", role: "fiscalizador" }
+      : metodo === "PUT"
+        ? { nome: "Bia" }
+        : undefined;
 
   it.each(permitidos)("permite acesso para %s", async (role) => {
     const resposta = await requisitar(metodo, caminho, role, corpo);
@@ -119,7 +124,7 @@ describe("POST /usuarios (respostas do controller)", () => {
       Object.assign(new Error("A senha é obrigatória"), { name: "ValidacaoError" })
     );
 
-    const resposta = await requisitar("POST", "", "admin", { ...novoUsuario, senha: undefined });
+    const resposta = await requisitar("POST", "", "admin", novoUsuario);
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
@@ -233,7 +238,12 @@ describe.each([
   it("responde 500 sem expor o erro interno", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     usuarioService[funcaoService].mockRejectedValue(new Error("falha no banco"));
-    const corpo = metodo === "POST" || metodo === "PUT" ? { nome: "Bia" } : undefined;
+    const corpo =
+      metodo === "POST"
+        ? { nome: "Bia", email: "bia@exemplo.com", senha: "123456", role: "fiscalizador" }
+        : metodo === "PUT"
+          ? { nome: "Bia" }
+          : undefined;
 
     const resposta = await requisitar(metodo, caminho, "admin", corpo);
 

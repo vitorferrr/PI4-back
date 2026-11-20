@@ -3,6 +3,10 @@ import visitaController from "../controllers/visitaController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 import validarId from "../middlewares/validarIdMiddleware.js";
+import {
+  validarCriacaoVisita,
+  validarListagemVisitas,
+} from "../middlewares/validationMiddleware.js";
 
 const router = Router();
 
@@ -10,6 +14,7 @@ router.post(
   "/",
   autenticar,
   autorizar("admin", "gestor"),
+  validarCriacaoVisita,
   visitaController.criar
 );
 
@@ -17,6 +22,7 @@ router.get(
   "/",
   autenticar,
   autorizar("admin", "gestor", "fiscalizador"),
+  validarListagemVisitas,
   visitaController.listar
 );
 
