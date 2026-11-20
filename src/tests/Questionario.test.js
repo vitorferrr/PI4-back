@@ -288,9 +288,9 @@ describe("salvar respostas do questionário", () => {
 
 describe("questionarioController.salvarRespostas", () => {
   it("responde 404 quando a visita não pertence ao fiscalizador", async () => {
-    const req = { params: { id: "10" }, usuario: { id: 6 }, body: { respostas: [] } };
+    const req = { params: { id: "10" }, usuario: { id: 6, role: "fiscalizador" }, body: { respostas: [] } };
     const res = criarRes();
-    vi.spyOn(visitaService, "buscarPorId").mockResolvedValueOnce({
+    vi.spyOn(visitaService, "buscarParaAcesso").mockResolvedValueOnce({
       id: 10,
       fiscalizadores: [{ id: 5 }],
     });
@@ -303,9 +303,9 @@ describe("questionarioController.salvarRespostas", () => {
   });
 
   it("responde 404 quando a visita some antes de gravar", async () => {
-    const req = { params: { id: "10" }, usuario: { id: 5 }, body: { respostas: [] } };
+    const req = { params: { id: "10" }, usuario: { id: 5, role: "fiscalizador" }, body: { respostas: [] } };
     const res = criarRes();
-    vi.spyOn(visitaService, "buscarPorId").mockResolvedValueOnce({
+    vi.spyOn(visitaService, "buscarParaAcesso").mockResolvedValueOnce({
       id: 10,
       fiscalizadores: [{ id: 5 }],
     });

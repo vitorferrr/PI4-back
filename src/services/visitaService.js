@@ -103,6 +103,12 @@ const listar = async (filtros = {}) => {
   });
 };
 
+const buscarParaAcesso = async (id) =>
+  await Visita.findByPk(id, {
+    attributes: ["id", "status"],
+    include: [{ ...includeFiscalizadoresPadrao, attributes: ["id"] }],
+  });
+
 const buscarPorId = async (id) => {
   const visita = await Visita.findByPk(id, {
     include: [
@@ -241,6 +247,7 @@ export default {
   criar,
   listar,
   buscarPorId,
+  buscarParaAcesso,
   atualizar,
   iniciar,
   concluir,

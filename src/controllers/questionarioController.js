@@ -1,6 +1,7 @@
 import questionarioService from "../services/questionarioService.js";
 import visitaService from "../services/visitaService.js";
 import tratarErro from "../utils/tratarErro.js";
+import { podeAcessarVisita, responderNaoEncontrada } from "../utils/acessoVisita.js";
 
 const listar = async (req, res) => {
   try {
@@ -14,23 +15,16 @@ const listar = async (req, res) => {
 
 const salvarRespostas = async (req, res) => {
   try {
-    const visita = await visitaService.buscarPorId(req.params.id);
-    const atribuida = visita?.fiscalizadores?.some(
-      (fiscalizador) => fiscalizador.id === req.usuario.id
-    );
+    const visita = await visitaService.buscarParaAcesso(req.params.id);
 
-    if (!atribuida) {
-      return res.status(404).json({
-        mensagem: "Visita não encontrada",
-      });
+    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
     }
 
     const respostas = await questionarioService.salvarRespostas(visita.id, req.body?.respostas);
 
     if (!respostas) {
-      return res.status(404).json({
-        mensagem: "Visita não encontrada",
-      });
+      return responderNaoEncontrada(res);
     }
 
     return res.status(200).json(respostas);

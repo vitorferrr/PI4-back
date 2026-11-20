@@ -163,6 +163,26 @@ describe("buscar visita por id", () => {
   });
 });
 
+describe("buscar visita para checar acesso", () => {
+  it("busca só o id, o status e os ids dos fiscalizadores", async () => {
+    Visita.findByPk.mockResolvedValue({ id: 10 });
+
+    const resultado = await visitaService.buscarParaAcesso(10);
+
+    expect(Visita.findByPk).toHaveBeenCalledWith(10, {
+      attributes: ["id", "status"],
+      include: [
+        expect.objectContaining({
+          as: "fiscalizadores",
+          attributes: ["id"],
+          through: { attributes: [] },
+        }),
+      ],
+    });
+    expect(resultado).toEqual({ id: 10 });
+  });
+});
+
 describe("atualizar visita", () => {
   it("atualiza só os campos permitidos e troca os fiscalizadores", async () => {
     const visita = criarVisitaFalsa(dadosVisita);

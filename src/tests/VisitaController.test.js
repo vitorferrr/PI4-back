@@ -14,6 +14,13 @@ vi.mock("../services/visitaService.js", () => ({
   },
 }));
 
+vi.mock("../services/questionarioService.js", () => ({
+  default: {
+    listar: vi.fn(),
+    salvarRespostas: vi.fn(),
+  },
+}));
+
 const SEGREDO = "segredo-de-teste";
 const visitaDoFiscalizador5 = { id: 10, fiscalizadores: [{ id: 5 }] };
 

@@ -1,14 +1,6 @@
 import visitaService from "../services/visitaService.js";
 import tratarErro from "../utils/tratarErro.js";
-
-const podeAcessarVisita = (usuario, visita) =>
-  usuario?.role !== "fiscalizador" ||
-  visita.fiscalizadores?.some((fiscalizador) => fiscalizador.id === usuario.id);
-
-const responderNaoEncontrada = (res) =>
-  res.status(404).json({
-    mensagem: "Visita não encontrada",
-  });
+import { podeAcessarVisita, responderNaoEncontrada } from "../utils/acessoVisita.js";
 
 const transicionar = (transicao, mensagemErro) => async (req, res) => {
   try {

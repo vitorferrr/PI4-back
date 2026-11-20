@@ -26,7 +26,7 @@ app.use(async (req, res, next) => {
 app.use("/usuarios", usuarioRoutes);
 app.use("/auth", authRoutes);
 app.use("/visitas", visitaRoutes);
-app.use(questionarioRoutes);
+app.use("/questionario", questionarioRoutes);
 
 app.get("/", (req, res) => {
   return res.send("Servidor express executando...");

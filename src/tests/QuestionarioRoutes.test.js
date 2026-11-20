@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import express from "express";
 import jwt from "jsonwebtoken";
 import questionarioRoutes from "../routes/questionarioRoutes.js";
+import visitaRoutes from "../routes/visitaRoutes.js";
 import questionarioService from "../services/questionarioService.js";
 import visitaService from "../services/visitaService.js";
 
@@ -14,7 +15,7 @@ vi.mock("../services/questionarioService.js", () => ({
 
 vi.mock("../services/visitaService.js", () => ({
   default: {
-    buscarPorId: vi.fn(),
+    buscarParaAcesso: vi.fn(),
   },
 }));
 
@@ -40,7 +41,8 @@ beforeAll(async () => {
 
   const app = express();
   app.use(express.json());
-  app.use(questionarioRoutes);
+  app.use("/questionario", questionarioRoutes);
+  app.use("/visitas", visitaRoutes);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -70,7 +72,7 @@ describe("GET /questionario", () => {
 
 describe("POST /visitas/:id/respostas", () => {
   it("salva as respostas do fiscalizador associado", async () => {
-    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.buscarParaAcesso.mockResolvedValue(visitaDoFiscalizador5);
     questionarioService.salvarRespostas.mockResolvedValue([{ id: 1, pergunta_id: 1 }]);
 
     const resposta = await requisitar("POST", "/visitas/10/respostas", "fiscalizador", 5, {
@@ -78,13 +80,13 @@ describe("POST /visitas/:id/respostas", () => {
     });
 
     expect(resposta.status).toBe(200);
-    expect(visitaService.buscarPorId).toHaveBeenCalledWith("10");
+    expect(visitaService.buscarParaAcesso).toHaveBeenCalledWith("10");
     expect(questionarioService.salvarRespostas).toHaveBeenCalledWith(10, respostas);
     expect(await resposta.json()).toEqual([{ id: 1, pergunta_id: 1 }]);
   });
 
   it("responde 404 para fiscalizador não associado, sem salvar", async () => {
-    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.buscarParaAcesso.mockResolvedValue(visitaDoFiscalizador5);
 
     const resposta = await requisitar("POST", "/visitas/10/respostas", "fiscalizador", 6, {
       respostas,
@@ -95,7 +97,7 @@ describe("POST /visitas/:id/respostas", () => {
   });
 
   it("responde 404 quando a visita não existe", async () => {
-    visitaService.buscarPorId.mockResolvedValue(null);
+    visitaService.buscarParaAcesso.mockResolvedValue(null);
 
     const resposta = await requisitar("POST", "/visitas/99/respostas", "fiscalizador", 5, {
       respostas,
@@ -108,7 +110,7 @@ describe("POST /visitas/:id/respostas", () => {
     const resposta = await requisitar("POST", "/visitas/10/respostas", role, 1, { respostas });
 
     expect(resposta.status).toBe(403);
-    expect(visitaService.buscarPorId).not.toHaveBeenCalled();
+    expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
   });
 
   it("responde 400 para id inválido", async () => {
@@ -117,14 +119,14 @@ describe("POST /visitas/:id/respostas", () => {
     });
 
     expect(resposta.status).toBe(400);
-    expect(visitaService.buscarPorId).not.toHaveBeenCalled();
+    expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
   });
 
   it("responde 400 com a lista de erros de validação", async () => {
     const erro = new Error("Há respostas inválidas");
     erro.name = "ValidacaoError";
     erro.errors = [{ message: "A pergunta 99 não existe" }];
-    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.buscarParaAcesso.mockResolvedValue(visitaDoFiscalizador5);
     questionarioService.salvarRespostas.mockRejectedValue(erro);
 
     const resposta = await requisitar("POST", "/visitas/10/respostas", "fiscalizador", 5, {
@@ -146,7 +148,7 @@ describe("POST /visitas/:id/respostas", () => {
 
   it("responde 500 quando o service falha", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    visitaService.buscarPorId.mockRejectedValue(new Error("falha no banco"));
+    visitaService.buscarParaAcesso.mockRejectedValue(new Error("falha no banco"));
 
     const resposta = await requisitar("POST", "/visitas/10/respostas", "fiscalizador", 5, {
       respostas,

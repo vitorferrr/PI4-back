@@ -1,5 +1,6 @@
 import { Router } from "express";
 import visitaController from "../controllers/visitaController.js";
+import questionarioController from "../controllers/questionarioController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 import validarId from "../middlewares/validarIdMiddleware.js";
@@ -42,6 +43,14 @@ router.patch(
   autorizar("admin", "gestor", "fiscalizador"),
   validarId,
   visitaController.concluir
+);
+
+router.post(
+  "/:id/respostas",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  questionarioController.salvarRespostas
 );
 
 export default router;
