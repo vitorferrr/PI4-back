@@ -25,7 +25,13 @@ const salvarRespostas = async (req, res) => {
       });
     }
 
-    const respostas = await questionarioService.salvarRespostas(visita, req.body?.respostas);
+    const respostas = await questionarioService.salvarRespostas(visita.id, req.body?.respostas);
+
+    if (!respostas) {
+      return res.status(404).json({
+        mensagem: "Visita não encontrada",
+      });
+    }
 
     return res.status(200).json(respostas);
   } catch (erro) {

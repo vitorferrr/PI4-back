@@ -8,7 +8,7 @@ import visitaService from "../services/visitaService.js";
 import getPerguntaQuestionarioModel from "../models/perguntaQuestionario.js";
 
 vi.mock("../models/index.js", () => {
-  const transacao = { commit: vi.fn(), rollback: vi.fn() };
+  const transacao = { commit: vi.fn(), rollback: vi.fn(), LOCK: { UPDATE: "UPDATE" } };
 
   return {
     sequelize: {
@@ -20,14 +20,17 @@ vi.mock("../models/index.js", () => {
         findAll: vi.fn(),
       },
       RespostaQuestionario: {
-        upsert: vi.fn(),
+        bulkCreate: vi.fn(),
         findAll: vi.fn(),
+      },
+      Visita: {
+        findByPk: vi.fn(),
       },
     },
   };
 });
 
-const { PerguntaQuestionario, RespostaQuestionario } = models;
+const { PerguntaQuestionario, RespostaQuestionario, Visita } = models;
 const { transacao } = sequelize;
 
 const sequelizeTeste = new Sequelize("postgres://teste:teste@localhost:5432/teste", {
@@ -123,7 +126,6 @@ describe("validações do modelo PerguntaQuestionario", () => {
 });
 
 describe("salvar respostas do questionário", () => {
-  const visitaEmAndamento = { id: 10, status: "em_andamento" };
   const perguntas = [
     { id: 1, tipo_resposta: "sim_nao" },
     { id: 2, tipo_resposta: "numero" },
@@ -136,21 +138,40 @@ describe("salvar respostas do questionário", () => {
     { pergunta_id: 3, resposta: "29/02/2028" },
     { pergunta_id: 4, resposta: "  Produtos sem preço na vitrine  " },
   ];
+  const opcoesBulkCreate = {
+    transaction: transacao,
+    updateOnDuplicate: ["resposta", "updatedAt"],
+    conflictAttributes: ["visita_id", "pergunta_id"],
+  };
 
-  it("grava cada resposta com upsert na mesma transação e devolve as respostas da visita", async () => {
+  beforeEach(() => {
+    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
     PerguntaQuestionario.findAll.mockResolvedValue(perguntas);
+  });
+
+  it("trava a visita, grava tudo em uma consulta e devolve as respostas da visita", async () => {
     RespostaQuestionario.findAll.mockResolvedValue([{ pergunta_id: 1 }]);
 
-    const resultado = await questionarioService.salvarRespostas(
-      visitaEmAndamento,
-      respostasValidas
-    );
+    const resultado = await questionarioService.salvarRespostas(10, respostasValidas);
 
-    expect(PerguntaQuestionario.findAll).toHaveBeenCalledWith({ where: { id: [1, 2, 3, 4] } });
-    expect(RespostaQuestionario.upsert).toHaveBeenCalledTimes(4);
-    expect(RespostaQuestionario.upsert).toHaveBeenCalledWith(
-      { visita_id: 10, pergunta_id: 4, resposta: "Produtos sem preço na vitrine" },
-      { transaction: transacao, conflictFields: ["visita_id", "pergunta_id"] }
+    expect(Visita.findByPk).toHaveBeenCalledWith(10, {
+      attributes: ["id", "status"],
+      transaction: transacao,
+      lock: transacao.LOCK.UPDATE,
+    });
+    expect(PerguntaQuestionario.findAll).toHaveBeenCalledWith({
+      where: { id: [1, 2, 3, 4] },
+      transaction: transacao,
+    });
+    expect(RespostaQuestionario.bulkCreate).toHaveBeenCalledTimes(1);
+    expect(RespostaQuestionario.bulkCreate).toHaveBeenCalledWith(
+      [
+        { visita_id: 10, pergunta_id: 1, resposta: "Sim" },
+        { visita_id: 10, pergunta_id: 2, resposta: "3,5" },
+        { visita_id: 10, pergunta_id: 3, resposta: "29/02/2028" },
+        { visita_id: 10, pergunta_id: 4, resposta: "Produtos sem preço na vitrine" },
+      ],
+      opcoesBulkCreate
     );
     expect(transacao.commit).toHaveBeenCalledTimes(1);
     expect(transacao.rollback).not.toHaveBeenCalled();
@@ -161,14 +182,36 @@ describe("salvar respostas do questionário", () => {
     expect(resultado).toEqual([{ pergunta_id: 1 }]);
   });
 
-  it.each(["agendada", "concluida", "cancelada"])("rejeita visita com status %s", async (status) => {
-    await expect(
-      questionarioService.salvarRespostas({ id: 10, status }, respostasValidas)
-    ).rejects.toMatchObject({
-      name: "ValidacaoError",
+  it("devolve null e desfaz a transação quando a visita não existe mais", async () => {
+    Visita.findByPk.mockResolvedValue(null);
+
+    expect(await questionarioService.salvarRespostas(10, respostasValidas)).toBeNull();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    expect(RespostaQuestionario.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it.each(["agendada", "concluida", "cancelada"])(
+    "rejeita visita com status %s, conferido com a linha travada",
+    async (status) => {
+      Visita.findByPk.mockResolvedValue({ id: 10, status });
+
+      await expect(
+        questionarioService.salvarRespostas(10, respostasValidas)
+      ).rejects.toMatchObject({
+        name: "ValidacaoError",
+        message: "Só é possível responder o questionário de visitas em andamento",
+      });
+      expect(RespostaQuestionario.bulkCreate).not.toHaveBeenCalled();
+      expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("confere o status antes de validar as respostas", async () => {
+    Visita.findByPk.mockResolvedValue({ id: 10, status: "concluida" });
+
+    await expect(questionarioService.salvarRespostas(10, [])).rejects.toMatchObject({
       message: "Só é possível responder o questionário de visitas em andamento",
     });
-    expect(RespostaQuestionario.upsert).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -185,18 +228,17 @@ describe("salvar respostas do questionário", () => {
         { pergunta_id: 1, resposta: "Não" },
       ],
     ],
-  ])("rejeita %s sem consultar o banco", async (_caso, respostas) => {
-    await expect(
-      questionarioService.salvarRespostas(visitaEmAndamento, respostas)
-    ).rejects.toMatchObject({ name: "ValidacaoError" });
+  ])("rejeita %s sem consultar as perguntas", async (_caso, respostas) => {
+    await expect(questionarioService.salvarRespostas(10, respostas)).rejects.toMatchObject({
+      name: "ValidacaoError",
+    });
     expect(PerguntaQuestionario.findAll).not.toHaveBeenCalled();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
   });
 
   it("lista todas as respostas inválidas e perguntas inexistentes de uma vez", async () => {
-    PerguntaQuestionario.findAll.mockResolvedValue(perguntas);
-
     await expect(
-      questionarioService.salvarRespostas(visitaEmAndamento, [
+      questionarioService.salvarRespostas(10, [
         { pergunta_id: 1, resposta: "Talvez" },
         { pergunta_id: 2, resposta: "doze" },
         { pergunta_id: 3, resposta: "31/02/2026" },
@@ -211,32 +253,26 @@ describe("salvar respostas do questionário", () => {
         { message: "A pergunta 99 não existe" },
       ],
     });
-    expect(sequelize.transaction).not.toHaveBeenCalled();
+    expect(RespostaQuestionario.bulkCreate).not.toHaveBeenCalled();
   });
 
   it('aceita "Não se aplica" nas perguntas de sim ou não', async () => {
-    PerguntaQuestionario.findAll.mockResolvedValue(perguntas);
     RespostaQuestionario.findAll.mockResolvedValue([]);
 
-    await questionarioService.salvarRespostas(visitaEmAndamento, [
-      { pergunta_id: 1, resposta: "Não se aplica" },
-    ]);
+    await questionarioService.salvarRespostas(10, [{ pergunta_id: 1, resposta: "Não se aplica" }]);
 
-    expect(RespostaQuestionario.upsert).toHaveBeenCalledWith(
-      { visita_id: 10, pergunta_id: 1, resposta: "Não se aplica" },
-      expect.anything()
+    expect(RespostaQuestionario.bulkCreate).toHaveBeenCalledWith(
+      [{ visita_id: 10, pergunta_id: 1, resposta: "Não se aplica" }],
+      opcoesBulkCreate
     );
   });
 
-  it("desfaz a transação quando uma gravação falha", async () => {
-    PerguntaQuestionario.findAll.mockResolvedValue(perguntas);
-    RespostaQuestionario.upsert
-      .mockResolvedValueOnce([{}])
-      .mockRejectedValueOnce(new Error("falha no banco"));
+  it("desfaz a transação quando a gravação falha", async () => {
+    RespostaQuestionario.bulkCreate.mockRejectedValueOnce(new Error("falha no banco"));
 
-    await expect(
-      questionarioService.salvarRespostas(visitaEmAndamento, respostasValidas)
-    ).rejects.toThrow("falha no banco");
+    await expect(questionarioService.salvarRespostas(10, respostasValidas)).rejects.toThrow(
+      "falha no banco"
+    );
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
     expect(transacao.commit).not.toHaveBeenCalled();
   });
@@ -256,5 +292,19 @@ describe("questionarioController.salvarRespostas", () => {
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(salvar).not.toHaveBeenCalled();
+  });
+
+  it("responde 404 quando a visita some antes de gravar", async () => {
+    const req = { params: { id: "10" }, usuario: { id: 5 }, body: { respostas: [] } };
+    const res = criarRes();
+    vi.spyOn(visitaService, "buscarPorId").mockResolvedValueOnce({
+      id: 10,
+      fiscalizadores: [{ id: 5 }],
+    });
+    vi.spyOn(questionarioService, "salvarRespostas").mockResolvedValueOnce(null);
+
+    await questionarioController.salvarRespostas(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 });

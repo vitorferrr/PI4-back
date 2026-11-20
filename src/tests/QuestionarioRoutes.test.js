@@ -79,10 +79,7 @@ describe("POST /visitas/:id/respostas", () => {
 
     expect(resposta.status).toBe(200);
     expect(visitaService.buscarPorId).toHaveBeenCalledWith("10");
-    expect(questionarioService.salvarRespostas).toHaveBeenCalledWith(
-      visitaDoFiscalizador5,
-      respostas
-    );
+    expect(questionarioService.salvarRespostas).toHaveBeenCalledWith(10, respostas);
     expect(await resposta.json()).toEqual([{ id: 1, pergunta_id: 1 }]);
   });
 

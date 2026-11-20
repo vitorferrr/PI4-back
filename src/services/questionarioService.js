@@ -1,6 +1,6 @@
 import models, { sequelize } from "../models/index.js";
 
-const { PerguntaQuestionario, RespostaQuestionario } = models;
+const { PerguntaQuestionario, RespostaQuestionario, Visita } = models;
 
 const erroValidacao = (mensagem, erros = [mensagem]) => {
   const erro = new Error(mensagem);
@@ -69,15 +69,12 @@ const validarLista = (respostas) => {
   });
 };
 
-const salvarRespostas = async (visita, respostas) => {
-  if (visita.status !== "em_andamento") {
-    throw erroValidacao("Só é possível responder o questionário de visitas em andamento");
-  }
-
+const validarRespostas = async (respostas, transaction) => {
   validarLista(respostas);
 
   const perguntas = await PerguntaQuestionario.findAll({
     where: { id: respostas.map((item) => item.pergunta_id) },
+    transaction,
   });
   const perguntasPorId = new Map(perguntas.map((pergunta) => [pergunta.id, pergunta]));
 
@@ -100,20 +97,41 @@ const salvarRespostas = async (visita, respostas) => {
   if (erros.length > 0) {
     throw erroValidacao("Há respostas inválidas", erros);
   }
+};
 
+const salvarRespostas = async (visitaId, respostas) => {
   const transaction = await sequelize.transaction();
 
   try {
-    for (const item of respostas) {
-      await RespostaQuestionario.upsert(
-        {
-          visita_id: visita.id,
-          pergunta_id: item.pergunta_id,
-          resposta: item.resposta.trim(),
-        },
-        { transaction, conflictFields: ["visita_id", "pergunta_id"] }
-      );
+    const visita = await Visita.findByPk(visitaId, {
+      attributes: ["id", "status"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
     }
+
+    if (visita.status !== "em_andamento") {
+      throw erroValidacao("Só é possível responder o questionário de visitas em andamento");
+    }
+
+    await validarRespostas(respostas, transaction);
+
+    await RespostaQuestionario.bulkCreate(
+      respostas.map((item) => ({
+        visita_id: visitaId,
+        pergunta_id: item.pergunta_id,
+        resposta: item.resposta.trim(),
+      })),
+      {
+        transaction,
+        updateOnDuplicate: ["resposta", "updatedAt"],
+        conflictAttributes: ["visita_id", "pergunta_id"],
+      }
+    );
 
     await transaction.commit();
   } catch (erro) {
@@ -122,7 +140,7 @@ const salvarRespostas = async (visita, respostas) => {
   }
 
   return await RespostaQuestionario.findAll({
-    where: { visita_id: visita.id },
+    where: { visita_id: visitaId },
     order: [["pergunta_id", "ASC"]],
   });
 };
