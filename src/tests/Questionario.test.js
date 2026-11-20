@@ -256,6 +256,14 @@ describe("salvar respostas do questionário", () => {
     expect(RespostaQuestionario.bulkCreate).not.toHaveBeenCalled();
   });
 
+  it.each(["01/01/0050", "31/12/1899"])("rejeita a data %s, com ano anterior a 1900", async (data) => {
+    await expect(
+      questionarioService.salvarRespostas(10, [{ pergunta_id: 3, resposta: data }])
+    ).rejects.toMatchObject({
+      errors: [{ message: "Resposta da pergunta 3 deve ser uma data válida no formato DD/MM/AAAA" }],
+    });
+  });
+
   it('aceita "Não se aplica" nas perguntas de sim ou não', async () => {
     RespostaQuestionario.findAll.mockResolvedValue([]);
 

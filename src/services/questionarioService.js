@@ -25,6 +25,9 @@ const FORMATOS = {
       if (!partes) return false;
 
       const [, dia, mes, ano] = partes.map(Number);
+
+      if (ano < 1900) return false;
+
       const data = new Date(Date.UTC(ano, mes - 1, dia));
 
       return data.getUTCDate() === dia && data.getUTCMonth() === mes - 1;
