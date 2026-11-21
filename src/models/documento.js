@@ -12,7 +12,7 @@ const getDocumentoModel = (sequelize, { DataTypes }) => {
       },
       url_arquivo_pdf: {
         type: DataTypes.TEXT,
-        allowNull: false,
+        allowNull: true,
         validate: {
           notEmpty: true,
         },
@@ -31,6 +31,12 @@ const getDocumentoModel = (sequelize, { DataTypes }) => {
     {
       tableName: "documentos",
       underscored: true,
+      indexes: [
+        {
+          unique: true,
+          fields: ["visita_id"],
+        },
+      ],
     }
   );
 
