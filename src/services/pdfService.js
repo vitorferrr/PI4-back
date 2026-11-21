@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import PDFDocument from "pdfkit";
 
 const gerarPdf = (desenhar, opcoes = {}) =>
@@ -22,6 +23,13 @@ const FONTE_NEGRITO = "Helvetica-Bold";
 const FONTE_ITALICO = "Helvetica-Oblique";
 const FUSO_HORARIO = "America/Recife";
 const CIDADE_PADRAO = "Jaboatão dos Guararapes/PE";
+
+const lerLogo = (arquivo) => readFileSync(new URL(`../assets/logos/${arquivo}`, import.meta.url));
+
+const LOGOS_PADRAO = {
+  cabecalho: lerLogo("prefeitura-jaboatao.png"),
+  rodape: lerLogo("procon-jaboatao.png"),
+};
 
 const ESQUERDA = 70;
 const DIREITA = 540;
@@ -195,7 +203,7 @@ const desenharCaixaMarcavel = (doc, x, y, marcada, tamanho = 9) => {
 
 const desenharCabecalho = (doc, logos) => {
   const logo = paraBuffer(logos.cabecalho);
-  if (logo) doc.image(logo, 78, 26, { fit: [105, 82] });
+  if (logo) doc.image(logo, ESQUERDA, 42, { fit: [120, 50], valign: "center" });
 
   doc.font(FONTE_NEGRITO).fontSize(10.5);
   doc.text("DIRETORIA DE PROTEÇÃO E DEFESA DO CONSUMIDOR", 190, 60, {
@@ -212,7 +220,7 @@ const desenharCabecalho = (doc, logos) => {
 
 const desenharRodape = (doc, logos, y = 772) => {
   const logo = paraBuffer(logos.rodape);
-  if (logo) doc.image(logo, 75, y, { fit: [170, 42] });
+  if (logo) doc.image(logo, ESQUERDA, y, { fit: [130, 42], valign: "center" });
 
   const opcoes = { width: 250, align: "center", lineBreak: false };
   doc.font(FONTE_NEGRITO).fontSize(8.5).text("Complexo Administrativo", 290, y + 4, opcoes);
@@ -451,7 +459,7 @@ const desenharDocumentoVisita = (doc, dados) => {
     observacoes,
     fiscalizadores = [],
     recebimento = {},
-    logos = {},
+    logos = LOGOS_PADRAO,
   } = dados;
 
   if (!TIPOS_DOCUMENTO.some((opcao) => opcao.chave === tipo)) {

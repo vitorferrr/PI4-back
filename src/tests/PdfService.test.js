@@ -1,6 +1,12 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PDFDocument from "pdfkit";
 import pdfService from "../services/pdfService.js";
+
+const LOGO_PREFEITURA = readFileSync(
+  new URL("../assets/logos/prefeitura-jaboatao.png", import.meta.url)
+);
+const LOGO_PROCON = readFileSync(new URL("../assets/logos/procon-jaboatao.png", import.meta.url));
 
 const PNG_1X1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -112,7 +118,7 @@ describe("documento da visita no modelo do PROCON", () => {
   });
 
   it("assina cada fiscalizador com nome e matrícula e o responsável com a data de recebimento", async () => {
-    await pdfService.gerarDocumentoVisita(dadosBase());
+    await pdfService.gerarDocumentoVisita({ ...dadosBase(), logos: {} });
 
     expect(imagem).toHaveBeenCalledTimes(3);
     for (const [arquivo] of imagem.mock.calls) expect(Buffer.isBuffer(arquivo)).toBe(true);
@@ -131,6 +137,7 @@ describe("documento da visita no modelo do PROCON", () => {
   it("registra a recusa do responsável sem imagem de assinatura", async () => {
     const dados = dadosBase();
     dados.recebimento = { nome: "Carlos Alberto da Silva", recusou: true };
+    dados.logos = {};
 
     await pdfService.gerarDocumentoVisita(dados);
 
@@ -138,6 +145,32 @@ describe("documento da visita no modelo do PROCON", () => {
     expect(textos).toEqual(
       expect.arrayContaining(["Recusou-se a assinar", "Recebido em: _____/_____/______"])
     );
+  });
+
+  it("usa o logo da Prefeitura no cabeçalho e o do PROCON no rodapé de cada folha", async () => {
+    const itens = Array.from({ length: 30 }, (_, indice) => ({
+      pergunta: `Pergunta ${indice + 1}?`,
+      resposta: "Sim",
+    }));
+
+    await pdfService.gerarDocumentoVisita({ ...dadosBase(), itens, fiscalizadores: [], recebimento: {} });
+
+    const arquivos = imagem.mock.calls.map(([arquivo]) => arquivo);
+    expect(arquivos).toEqual([LOGO_PREFEITURA, LOGO_PROCON, LOGO_PREFEITURA, LOGO_PROCON]);
+  });
+
+  it("aceita outros logos no lugar dos padrões", async () => {
+    const logo = Buffer.from(PNG_1X1, "base64");
+
+    await pdfService.gerarDocumentoVisita({
+      ...dadosBase(),
+      fiscalizadores: [],
+      recebimento: {},
+      logos: { cabecalho: logo },
+    });
+
+    expect(imagem).toHaveBeenCalledTimes(1);
+    expect(imagem.mock.calls[0][0]).toEqual(logo);
   });
 
   it("mantém o espaço do fiscalizador quando nenhum foi informado", async () => {
