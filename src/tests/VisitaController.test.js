@@ -14,6 +14,12 @@ vi.mock("../services/visitaService.js", () => ({
   },
 }));
 
+vi.mock("../services/documentoService.js", () => ({
+  default: {
+    gerar: vi.fn(),
+  },
+}));
+
 vi.mock("../services/questionarioService.js", () => ({
   default: {
     listar: vi.fn(),
