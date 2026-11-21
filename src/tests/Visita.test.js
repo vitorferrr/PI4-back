@@ -163,6 +163,26 @@ describe("buscar visita por id", () => {
   });
 });
 
+describe("buscar visita para checar acesso", () => {
+  it("busca só o id, o status e os ids dos fiscalizadores", async () => {
+    Visita.findByPk.mockResolvedValue({ id: 10 });
+
+    const resultado = await visitaService.buscarParaAcesso(10);
+
+    expect(Visita.findByPk).toHaveBeenCalledWith(10, {
+      attributes: ["id", "status"],
+      include: [
+        expect.objectContaining({
+          as: "fiscalizadores",
+          attributes: ["id"],
+          through: { attributes: [] },
+        }),
+      ],
+    });
+    expect(resultado).toEqual({ id: 10 });
+  });
+});
+
 describe("atualizar visita", () => {
   it("atualiza só os campos permitidos e troca os fiscalizadores", async () => {
     const visita = criarVisitaFalsa(dadosVisita);
@@ -211,40 +231,107 @@ describe("atualizar visita", () => {
 });
 
 describe("iniciar visita", () => {
-  it("atualiza condicionando ao status agendada e define a data de realização", async () => {
+  const coordenadas = { latitude: -8.1127, longitude: -35.0147 };
+  const visitaAgendada = { id: 10, status: "agendada" };
+
+  it("confere o status, grava a data e a localização condicionando ao status agendada", async () => {
+    Visita.findByPk
+      .mockResolvedValueOnce(visitaAgendada)
+      .mockResolvedValueOnce({ id: 10, status: "em_andamento" });
     Visita.update.mockResolvedValue([1]);
-    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
 
-    const resultado = await visitaService.iniciar(10);
+    const resultado = await visitaService.iniciar(10, coordenadas);
 
+    expect(Visita.findByPk).toHaveBeenNthCalledWith(1, 10, { attributes: ["id", "status"] });
     expect(Visita.update).toHaveBeenCalledWith(
-      { status: "em_andamento", data_realizacao: expect.any(Date) },
+      {
+        status: "em_andamento",
+        data_realizacao: expect.any(Date),
+        latitude: -8.1127,
+        longitude: -35.0147,
+      },
       { where: { id: 10, status: "agendada" } }
     );
     expect(resultado).toEqual({ id: 10, status: "em_andamento" });
   });
 
-  it("rejeita quando nenhuma linha é alterada e a visita existe, como em requisição simultânea", async () => {
-    Visita.update.mockResolvedValue([0]);
-    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
+  it("aceita os limites extremos das coordenadas", async () => {
+    Visita.findByPk.mockResolvedValue(visitaAgendada);
+    Visita.update.mockResolvedValue([1]);
 
-    await expect(visitaService.iniciar(10)).rejects.toMatchObject({
+    await visitaService.iniciar(10, { latitude: -90, longitude: 180 });
+
+    expect(Visita.update).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: -90, longitude: 180 }),
+      expect.anything()
+    );
+  });
+
+  it.each([
+    ["sem corpo", undefined],
+    ["sem latitude", { longitude: -35 }],
+    ["sem longitude", { latitude: -8 }],
+    ["latitude como texto", { latitude: "-8.1", longitude: -35 }],
+    ["latitude acima de 90", { latitude: 90.5, longitude: -35 }],
+    ["longitude abaixo de -180", { latitude: -8, longitude: -180.1 }],
+    ["valor não finito", { latitude: Number.NaN, longitude: -35 }],
+  ])("rejeita coordenadas inválidas (%s) sem alterar a visita", async (_caso, dados) => {
+    Visita.findByPk.mockResolvedValue(visitaAgendada);
+
+    await expect(visitaService.iniciar(10, dados)).rejects.toMatchObject({
+      name: "ValidacaoError",
+    });
+    expect(Visita.update).not.toHaveBeenCalled();
+  });
+
+  it("lista os dois erros quando latitude e longitude são inválidas", async () => {
+    Visita.findByPk.mockResolvedValue(visitaAgendada);
+
+    await expect(visitaService.iniciar(10, {})).rejects.toMatchObject({
+      errors: [
+        { message: "A latitude deve ser um número entre -90 e 90" },
+        { message: "A longitude deve ser um número entre -180 e 180" },
+      ],
+    });
+  });
+
+  it.each(["em_andamento", "concluida", "cancelada"])(
+    "responde o erro de status, e não o de localização, para visita %s",
+    async (status) => {
+      Visita.findByPk.mockResolvedValue({ id: 10, status });
+
+      await expect(visitaService.iniciar(10, undefined)).rejects.toMatchObject({
+        name: "ValidacaoError",
+        message: "Somente visitas agendadas podem ser iniciadas",
+      });
+      expect(Visita.update).not.toHaveBeenCalled();
+    }
+  );
+
+  it("retorna null quando a visita não existe, sem validar a localização", async () => {
+    Visita.findByPk.mockResolvedValue(null);
+
+    expect(await visitaService.iniciar(99, undefined)).toBeNull();
+    expect(Visita.update).not.toHaveBeenCalled();
+  });
+
+  it("rejeita quando nenhuma linha é alterada e a visita existe, como em requisição simultânea", async () => {
+    Visita.findByPk
+      .mockResolvedValueOnce(visitaAgendada)
+      .mockResolvedValueOnce({ id: 10, status: "em_andamento" });
+    Visita.update.mockResolvedValue([0]);
+
+    await expect(visitaService.iniciar(10, coordenadas)).rejects.toMatchObject({
       name: "ValidacaoError",
       message: "Somente visitas agendadas podem ser iniciadas",
     });
   });
 
-  it("retorna null quando a visita não existe", async () => {
-    Visita.update.mockResolvedValue([0]);
-    Visita.findByPk.mockResolvedValue(null);
-
-    expect(await visitaService.iniciar(99)).toBeNull();
-  });
-
   it("propaga o erro quando a atualização falha", async () => {
+    Visita.findByPk.mockResolvedValue(visitaAgendada);
     Visita.update.mockRejectedValue(new Error("falha no banco"));
 
-    await expect(visitaService.iniciar(10)).rejects.toThrow("falha no banco");
+    await expect(visitaService.iniciar(10, coordenadas)).rejects.toThrow("falha no banco");
   });
 });
 
