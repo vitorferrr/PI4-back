@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { Usuario, Visita, Documento, Assinatura } = vi.hoisted(() => ({
-  Usuario: { count: vi.fn() },
-  Visita: { count: vi.fn() },
-  Documento: { count: vi.fn() },
-  Assinatura: { count: vi.fn() },
-}));
+const { Usuario, Visita, Documento, Assinatura, listarVisitas } = vi.hoisted(
+  () => ({
+    Usuario: { count: vi.fn() },
+    Visita: { count: vi.fn() },
+    Documento: { count: vi.fn() },
+    Assinatura: { count: vi.fn() },
+    listarVisitas: vi.fn(),
+  })
+);
 
 vi.mock("../models/index.js", () => ({
   default: { Usuario, Visita, Documento, Assinatura },
+}));
+
+vi.mock("../services/visitaService.js", () => ({
+  default: { listar: listarVisitas },
 }));
 
 import adminService from "../services/adminService.js";
@@ -68,5 +75,41 @@ describe("adminService.obterDadosGerais", () => {
         total: 14,
       },
     });
+  });
+});
+
+describe("adminService.exportarVisitasCsv", () => {
+  it("gera CSV com BOM, cabeçalho, campos escapados e filtros repassados", async () => {
+    listarVisitas.mockResolvedValue([
+      {
+        id: 10,
+        denunciado: 'Mercado "Bom, Preço"',
+        status: "concluida",
+        gestor: { nome: "Carlos" },
+        fiscalizadores: [{ nome: "Ana" }, { nome: "Bruno" }],
+        data_agendada: new Date("2026-12-01T10:00:00.000Z"),
+        data_realizacao: null,
+        latitude: "-23.55052000",
+        longitude: "-46.63330800",
+        observacoes_livres: "Linha 1\nLinha 2",
+      },
+    ]);
+
+    const csv = await adminService.exportarVisitasCsv({ status: "concluida" });
+
+    expect(listarVisitas).toHaveBeenCalledWith({ status: "concluida" });
+    expect(csv).toBe(
+      '\uFEFFid,denunciado,status,gestor,fiscalizadores,data_agendada,data_realizacao,latitude,longitude,observacoes_livres\r\n10,"Mercado ""Bom, Preço""",concluida,Carlos,Ana; Bruno,2026-12-01T10:00:00.000Z,,-23.55052000,-46.63330800,"Linha 1\nLinha 2"'
+    );
+  });
+
+  it("gera apenas o cabeçalho quando não há visitas", async () => {
+    listarVisitas.mockResolvedValue([]);
+
+    const csv = await adminService.exportarVisitasCsv();
+
+    expect(csv).toBe(
+      "\uFEFFid,denunciado,status,gestor,fiscalizadores,data_agendada,data_realizacao,latitude,longitude,observacoes_livres"
+    );
   });
 });

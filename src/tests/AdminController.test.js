@@ -15,6 +15,7 @@ import adminService from "../services/adminService.js";
 vi.mock("../services/adminService.js", () => ({
   default: {
     obterDadosGerais: vi.fn(),
+    exportarVisitasCsv: vi.fn(),
   },
 }));
 
@@ -117,6 +118,67 @@ describe("GET /admin/dados-gerais", () => {
     expect(resposta.status).toBe(500);
     expect(await resposta.json()).toEqual({
       mensagem: "Erro ao obter dados gerais",
+    });
+    consoleError.mockRestore();
+  });
+});
+
+describe("GET /admin/exportar", () => {
+  it("retorna 200 com CSV e cabeçalhos de download para admin", async () => {
+    const csvFalso = "id,denunciado\r\n1,Loja A";
+    adminService.exportarVisitasCsv.mockResolvedValue(csvFalso);
+
+    const resposta = await requisitar(
+      "/exportar?status=concluida&gestor_id=2&fiscalizador_id=5",
+      "admin"
+    );
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.headers.get("content-type")).toContain("text/csv");
+    expect(resposta.headers.get("content-disposition")).toBe(
+      'attachment; filename="visitas.csv"'
+    );
+    expect(await resposta.text()).toBe(csvFalso);
+    expect(adminService.exportarVisitasCsv).toHaveBeenCalledWith({
+      status: "concluida",
+      gestor_id: "2",
+      fiscalizador_id: "5",
+    });
+  });
+
+  it("responde 400 para filtros inválidos na query sem chamar o service", async () => {
+    const resposta = await requisitar("/exportar?status=invalido", "admin");
+
+    expect(resposta.status).toBe(400);
+    expect(adminService.exportarVisitasCsv).not.toHaveBeenCalled();
+  });
+
+  it.each(["gestor", "fiscalizador"])(
+    "responde 403 para %s sem chamar o service",
+    async (role) => {
+      const resposta = await requisitar("/exportar", role);
+
+      expect(resposta.status).toBe(403);
+      expect(adminService.exportarVisitasCsv).not.toHaveBeenCalled();
+    }
+  );
+
+  it("responde 401 sem token e não chama o service", async () => {
+    const resposta = await requisitar("/exportar");
+
+    expect(resposta.status).toBe(401);
+    expect(adminService.exportarVisitasCsv).not.toHaveBeenCalled();
+  });
+
+  it("responde 500 quando o service falha", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    adminService.exportarVisitasCsv.mockRejectedValue(new Error("falha"));
+
+    const resposta = await requisitar("/exportar", "admin");
+
+    expect(resposta.status).toBe(500);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Erro ao exportar visitas",
     });
     consoleError.mockRestore();
   });
