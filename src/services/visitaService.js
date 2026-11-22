@@ -134,26 +134,22 @@ const buscarPorId = async (id) => {
   return visita;
 };
 
+const CAMPOS_EDITAVEIS = [
+  "denunciado",
+  "gestor_id",
+  "status",
+  "latitude",
+  "longitude",
+  "data_agendada",
+  "data_realizacao",
+  "observacoes_livres",
+];
+
 const atualizar = async (id, dados, fiscalizadoresIds) => {
-  const visita = await Visita.findByPk(id);
-
-  if (!visita) {
-    return null;
-  }
-
   validarQuantidadeFiscalizadores(fiscalizadoresIds);
 
   const dadosAtualizados = {};
-  [
-    "denunciado",
-    "gestor_id",
-    "status",
-    "latitude",
-    "longitude",
-    "data_agendada",
-    "data_realizacao",
-    "observacoes_livres",
-  ].forEach((campo) => {
+  CAMPOS_EDITAVEIS.forEach((campo) => {
     if (dados[campo] !== undefined) {
       dadosAtualizados[campo] = dados[campo];
     }
@@ -162,6 +158,23 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
   const transaction = await sequelize.transaction();
 
   try {
+    const visita = await Visita.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    const documento = await Documento.findOne({
+      attributes: ["id"],
+      where: { visita_id: id },
+      transaction,
+    });
+
+    if (documento) {
+      throw erroValidacao("O documento da visita já foi gerado; a visita não pode mais ser editada");
+    }
+
     await visita.update(dadosAtualizados, { transaction });
 
     if (Array.isArray(fiscalizadoresIds)) {
@@ -169,12 +182,12 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
     }
 
     await transaction.commit();
-
-    return await buscarPorId(id);
   } catch (erro) {
     await transaction.rollback();
     throw erro;
   }
+
+  return await buscarPorId(id);
 };
 
 // O status esperado faz parte do WHERE para que a checagem e a escrita sejam uma

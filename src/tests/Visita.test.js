@@ -205,16 +205,29 @@ describe("buscar visita para checar acesso", () => {
 });
 
 describe("atualizar visita", () => {
-  it("atualiza só os campos permitidos e troca os fiscalizadores", async () => {
+  beforeEach(() => {
+    Documento.findOne.mockResolvedValue(null);
+  });
+
+  it("trava a visita, atualiza só os campos permitidos e troca os fiscalizadores", async () => {
     const visita = criarVisitaFalsa(dadosVisita);
     Visita.findByPk.mockResolvedValueOnce(visita).mockResolvedValueOnce({ id: 10 });
 
-    await visitaService.atualizar(
+    const resultado = await visitaService.atualizar(
       10,
       { status: "em_andamento", campoInvalido: "x" },
       [4]
     );
 
+    expect(Visita.findByPk).toHaveBeenNthCalledWith(1, 10, {
+      transaction: transacao,
+      lock: transacao.LOCK.UPDATE,
+    });
+    expect(Documento.findOne).toHaveBeenCalledWith({
+      attributes: ["id"],
+      where: { visita_id: 10 },
+      transaction: transacao,
+    });
     expect(visita.update).toHaveBeenCalledWith(
       { status: "em_andamento" },
       { transaction: transacao }
@@ -223,6 +236,7 @@ describe("atualizar visita", () => {
       transaction: transacao,
     });
     expect(transacao.commit).toHaveBeenCalledTimes(1);
+    expect(resultado).toEqual({ id: 10 });
   });
 
   it("não mexe nos fiscalizadores quando a lista não é enviada", async () => {
@@ -234,6 +248,29 @@ describe("atualizar visita", () => {
     expect(visita.setFiscalizadores).not.toHaveBeenCalled();
   });
 
+  it("rejeita editar a visita depois que o documento foi gerado", async () => {
+    const visita = criarVisitaFalsa(dadosVisita);
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue({ id: 7 });
+
+    await expect(visitaService.atualizar(10, { denunciado: "Outro" }, [4])).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "O documento da visita já foi gerado; a visita não pode mais ser editada",
+    });
+    expect(visita.update).not.toHaveBeenCalled();
+    expect(visita.setFiscalizadores).not.toHaveBeenCalled();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejeita trocar para mais de 3 fiscalizadores sem abrir transação", async () => {
+    await expect(visitaService.atualizar(10, {}, [2, 3, 4, 5])).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Uma visita pode ter no máximo 3 agentes fiscalizadores",
+    });
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+    expect(Visita.findByPk).not.toHaveBeenCalled();
+  });
+
   it("desfaz a transação quando a atualização falha", async () => {
     const visita = criarVisitaFalsa(dadosVisita);
     visita.update.mockRejectedValue(new Error("erro"));
@@ -241,25 +278,15 @@ describe("atualizar visita", () => {
 
     await expect(visitaService.atualizar(10, { status: "concluida" })).rejects.toThrow();
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    expect(transacao.commit).not.toHaveBeenCalled();
   });
 
-  it("rejeita trocar para mais de 3 fiscalizadores", async () => {
-    const visita = criarVisitaFalsa(dadosVisita);
-    Visita.findByPk.mockResolvedValue(visita);
-
-    await expect(visitaService.atualizar(10, {}, [2, 3, 4, 5])).rejects.toMatchObject({
-      name: "ValidacaoError",
-      message: "Uma visita pode ter no máximo 3 agentes fiscalizadores",
-    });
-    expect(sequelize.transaction).not.toHaveBeenCalled();
-    expect(visita.setFiscalizadores).not.toHaveBeenCalled();
-  });
-
-  it("retorna null quando a visita não existe", async () => {
+  it("retorna null e desfaz a transação quando a visita não existe", async () => {
     Visita.findByPk.mockResolvedValue(null);
 
     expect(await visitaService.atualizar(99, { status: "concluida" })).toBeNull();
-    expect(sequelize.transaction).not.toHaveBeenCalled();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    expect(Documento.findOne).not.toHaveBeenCalled();
   });
 });
 
