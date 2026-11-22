@@ -1,14 +1,7 @@
 import models, { sequelize } from "../models/index.js";
+import erroValidacao from "../utils/erroValidacao.js";
 
-const { PerguntaQuestionario, RespostaQuestionario, Visita } = models;
-
-const erroValidacao = (mensagem, erros = [mensagem]) => {
-  const erro = new Error(mensagem);
-  erro.name = "ValidacaoError";
-  erro.errors = erros.map((message) => ({ message }));
-
-  return erro;
-};
+const { Documento, PerguntaQuestionario, RespostaQuestionario, Visita } = models;
 
 const FORMATOS = {
   sim_nao: {
@@ -119,6 +112,18 @@ const salvarRespostas = async (visitaId, respostas) => {
 
     if (visita.status !== "em_andamento") {
       throw erroValidacao("Só é possível responder o questionário de visitas em andamento");
+    }
+
+    const documento = await Documento.findOne({
+      attributes: ["id"],
+      where: { visita_id: visitaId },
+      transaction,
+    });
+
+    if (documento) {
+      throw erroValidacao(
+        "O documento da visita já foi gerado; as respostas não podem mais ser alteradas"
+      );
     }
 
     await validarRespostas(respostas, transaction);
