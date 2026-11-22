@@ -23,12 +23,14 @@
   },
   "homepage": "https://github.com/Giantrafa/PI4-back#readme",
   "dependencies": {
+    "@supabase/supabase-js": "2.119.2",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^18.0.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0",
+    "pngjs": "7.0.0",
     "sequelize": "^6.37.8"
   },
   "devDependencies": {
