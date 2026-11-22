@@ -101,6 +101,25 @@ describe("criar visita", () => {
     expect(Visita.create).not.toHaveBeenCalled();
   });
 
+  it("rejeita mais de 3 fiscalizadores sem abrir transação", async () => {
+    await expect(visitaService.criar(dadosVisita, [2, 3, 4, 5])).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Uma visita pode ter no máximo 3 agentes fiscalizadores",
+    });
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+    expect(Visita.create).not.toHaveBeenCalled();
+  });
+
+  it("conta fiscalizadores repetidos uma vez só", async () => {
+    const visitaCriada = criarVisitaFalsa(dadosVisita);
+    Visita.create.mockResolvedValue(visitaCriada);
+    Visita.findByPk.mockResolvedValue({ id: 10 });
+
+    await visitaService.criar(dadosVisita, [2, 3, 4, 4]);
+
+    expect(transacao.commit).toHaveBeenCalledTimes(1);
+  });
+
   it("desfaz a transação quando ocorre erro ao salvar", async () => {
     Visita.create.mockRejectedValue(new Error("falha no banco"));
 
@@ -222,6 +241,18 @@ describe("atualizar visita", () => {
 
     await expect(visitaService.atualizar(10, { status: "concluida" })).rejects.toThrow();
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejeita trocar para mais de 3 fiscalizadores", async () => {
+    const visita = criarVisitaFalsa(dadosVisita);
+    Visita.findByPk.mockResolvedValue(visita);
+
+    await expect(visitaService.atualizar(10, {}, [2, 3, 4, 5])).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Uma visita pode ter no máximo 3 agentes fiscalizadores",
+    });
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+    expect(visita.setFiscalizadores).not.toHaveBeenCalled();
   });
 
   it("retorna null quando a visita não existe", async () => {

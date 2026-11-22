@@ -20,6 +20,16 @@ const includeFiscalizadoresPadrao = {
   through: { attributes: [] },
 };
 
+const MAXIMO_FISCALIZADORES = 3;
+
+const validarQuantidadeFiscalizadores = (fiscalizadoresIds) => {
+  if (Array.isArray(fiscalizadoresIds) && new Set(fiscalizadoresIds).size > MAXIMO_FISCALIZADORES) {
+    throw erroValidacao(
+      `Uma visita pode ter no máximo ${MAXIMO_FISCALIZADORES} agentes fiscalizadores`
+    );
+  }
+};
+
 const criar = async (dados, fiscalizadoresIds = []) => {
   const {
     denunciado,
@@ -43,6 +53,8 @@ const criar = async (dados, fiscalizadoresIds = []) => {
   if (!data_agendada) {
     throw erroValidacao("A data agendada é obrigatória");
   }
+
+  validarQuantidadeFiscalizadores(fiscalizadoresIds);
 
   const transaction = await sequelize.transaction();
 
@@ -128,6 +140,8 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
   if (!visita) {
     return null;
   }
+
+  validarQuantidadeFiscalizadores(fiscalizadoresIds);
 
   const dadosAtualizados = {};
   [
