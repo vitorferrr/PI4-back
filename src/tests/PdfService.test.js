@@ -225,6 +225,31 @@ describe("documento da visita no modelo do PROCON", () => {
     expect(bairro.length).toBeLessThan(dados.estabelecimento.bairro.length);
   });
 
+  it("rejeita mais de 3 fiscalizadores, que não cabem no quadro de autenticação", async () => {
+    const fiscalizadores = Array.from({ length: 4 }, (_, indice) => ({
+      nome: `Fiscal ${indice + 1}`,
+      matricula: `${10000 + indice}`,
+    }));
+
+    await expect(
+      pdfService.gerarDocumentoVisita({ ...dadosBase(), fiscalizadores })
+    ).rejects.toThrow("O documento comporta no máximo 3 agentes fiscalizadores");
+  });
+
+  it.each([
+    ["uma URL", "https://exemplo.supabase.co/storage/v1/object/assinatura.png"],
+    ["um base64 que não é imagem", Buffer.from("não é imagem").toString("base64")],
+  ])("gera o documento mesmo quando a assinatura é %s", async (_caso, assinatura) => {
+    const dados = dadosBase();
+    dados.fiscalizadores[0].assinatura = assinatura;
+
+    const pdf = await pdfService.gerarDocumentoVisita(dados);
+
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(textos).toContain("Assinatura indisponível");
+    expect(textos).toEqual(expect.arrayContaining(["Ana Paula Ferreira", "João Victor Lima"]));
+  });
+
   it("rejeita tipo de documento desconhecido", async () => {
     await expect(
       pdfService.gerarDocumentoVisita({ ...dadosBase(), tipo: "multa" })

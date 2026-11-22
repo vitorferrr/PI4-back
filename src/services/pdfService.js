@@ -26,9 +26,14 @@ const CIDADE_PADRAO = "Jaboatão dos Guararapes/PE";
 
 const lerLogo = (arquivo) => readFileSync(new URL(`../assets/logos/${arquivo}`, import.meta.url));
 
-const LOGOS_PADRAO = {
-  cabecalho: lerLogo("prefeitura-jaboatao.png"),
-  rodape: lerLogo("procon-jaboatao.png"),
+let logosPadrao;
+
+const carregarLogosPadrao = () => {
+  logosPadrao ??= {
+    cabecalho: lerLogo("prefeitura-jaboatao.png"),
+    rodape: lerLogo("procon-jaboatao.png"),
+  };
+  return logosPadrao;
 };
 
 const ESQUERDA = 70;
@@ -324,18 +329,34 @@ const desenharFolhaDeContinuacao = (doc, temContinuacao) => {
   doc.text("NÃO", 429, y + 1.5, { lineBreak: false });
 };
 
+const ehUrl = (imagem) => typeof imagem === "string" && /^https?:\/\//i.test(imagem.trim());
+
 const desenharAssinatura = (doc, imagem, x, y, largura, altura) => {
-  const buffer = paraBuffer(imagem);
-  if (buffer) doc.image(buffer, x, y, { fit: [largura, altura], align: "center", valign: "center" });
+  if (!imagem) return;
+
+  try {
+    if (ehUrl(imagem)) throw new Error("A assinatura deve ser enviada como Buffer ou base64");
+    doc.image(paraBuffer(imagem), x, y, { fit: [largura, altura], align: "center", valign: "center" });
+  } catch {
+    doc
+      .font(FONTE_ITALICO)
+      .fontSize(7)
+      .text("Assinatura indisponível", x, y + altura / 2 - 4, {
+        width: largura,
+        align: "center",
+        lineBreak: false,
+      });
+  }
 };
 
-const desenharFiscalizadores = (doc, fiscalizadores, topo, largura, alturaLinha) => {
-  const colunas = Math.min(Math.max(fiscalizadores.length, 1), 3);
+const MAXIMO_FISCALIZADORES = 3;
+
+const desenharFiscalizadores = (doc, fiscalizadores, y, largura, altura) => {
+  const colunas = fiscalizadores.length;
   const larguraCelula = largura / colunas;
 
   fiscalizadores.forEach((fiscal, indice) => {
-    const x = ESQUERDA + (indice % colunas) * larguraCelula;
-    const y = topo + Math.floor(indice / colunas) * alturaLinha;
+    const x = ESQUERDA + indice * larguraCelula;
 
     const opcoesTexto = { width: larguraCelula - 8, align: "center", lineBreak: false };
 
@@ -356,11 +377,7 @@ const desenharFiscalizadores = (doc, fiscalizadores, topo, largura, alturaLinha)
   doc.lineWidth(0.8);
   for (let coluna = 1; coluna < colunas; coluna += 1) {
     const x = ESQUERDA + coluna * larguraCelula;
-    doc.moveTo(x, topo).lineTo(x, topo + alturaLinha * Math.ceil(fiscalizadores.length / colunas)).stroke();
-  }
-  for (let linha = 1; linha < Math.ceil(fiscalizadores.length / colunas); linha += 1) {
-    const y = topo + linha * alturaLinha;
-    doc.moveTo(ESQUERDA, y).lineTo(ESQUERDA + largura, y).stroke();
+    doc.moveTo(x, y).lineTo(x, y + altura).stroke();
   }
 };
 
@@ -402,10 +419,12 @@ const desenharRecebimento = (doc, recebimento, x, topo, largura, altura) => {
 };
 
 const desenharAutenticacao = (doc, fiscalizadores, recebimento) => {
+  if (fiscalizadores.length > MAXIMO_FISCALIZADORES) {
+    throw new Error(`O documento comporta no máximo ${MAXIMO_FISCALIZADORES} agentes fiscalizadores`);
+  }
+
   const topo = 682;
-  const alturaLinha = 70;
-  const linhas = Math.max(Math.ceil(fiscalizadores.length / 3), 1);
-  const altura = alturaLinha * linhas;
+  const altura = 70;
   const divisao = 354;
 
   doc.font(FONTE).fontSize(10).text("AUTENTICAÇÃO", 72, topo - 14, { lineBreak: false });
@@ -413,10 +432,8 @@ const desenharAutenticacao = (doc, fiscalizadores, recebimento) => {
   doc.moveTo(divisao, topo).lineTo(divisao, topo + altura).stroke();
 
   const assinantes = fiscalizadores.length ? fiscalizadores : [{}];
-  desenharFiscalizadores(doc, assinantes, topo, divisao - ESQUERDA, alturaLinha);
+  desenharFiscalizadores(doc, assinantes, topo, divisao - ESQUERDA, altura);
   desenharRecebimento(doc, recebimento, divisao, topo, DIREITA - divisao, altura);
-
-  return topo + altura;
 };
 
 const desenharContinuacao = (doc, { numero, linhas, folha, totalFolhas, logos }) => {
@@ -459,7 +476,7 @@ const desenharDocumentoVisita = (doc, dados) => {
     observacoes,
     fiscalizadores = [],
     recebimento = {},
-    logos = LOGOS_PADRAO,
+    logos = carregarLogosPadrao(),
   } = dados;
 
   if (!TIPOS_DOCUMENTO.some((opcao) => opcao.chave === tipo)) {
@@ -477,8 +494,8 @@ const desenharDocumentoVisita = (doc, dados) => {
   desenharLinhasPautadas(doc, folhas[0], LINHAS_PRIMEIRA_FOLHA);
   desenharFolhaDeContinuacao(doc, folhas.length > 1);
 
-  const fimAutenticacao = desenharAutenticacao(doc, fiscalizadores, recebimento);
-  desenharRodape(doc, logos, Math.max(772, fimAutenticacao + 10));
+  desenharAutenticacao(doc, fiscalizadores, recebimento);
+  desenharRodape(doc, logos);
 
   folhas.slice(1).forEach((linhas, indice) => {
     desenharContinuacao(doc, {
