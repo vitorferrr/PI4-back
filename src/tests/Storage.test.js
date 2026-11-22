@@ -60,7 +60,7 @@ describe("upload reutilizável", () => {
     { ...arquivo, diretorio: "a".repeat(201) }, { ...arquivo, diretorio: "assinaturas\n" },
     { ...arquivo, diretorio: "assinaturas\r" }, { ...arquivo, diretorio: "assinaturas\u0000" },
   ])("rejeita parâmetros inválidos antes de acessar configuração ou SDK (%#)", async (entrada) => {
-    await expect(uploadArquivo(entrada)).rejects.toMatchObject({ name: "ValidacaoError", codigo: "STORAGE_PARAMETRO_INVALIDO" });
+    await expect(uploadArquivo(entrada)).rejects.toMatchObject({ name: "StorageError", codigo: "STORAGE_PARAMETRO_INVALIDO" });
     expect(getStorageContext).not.toHaveBeenCalled();
     expect(upload).not.toHaveBeenCalled();
   });
@@ -148,7 +148,7 @@ describe("remoção exata para compensação", () => {
     { ...referencia, path: "assinaturas/" }, { ...referencia, path: [referencia.path] },
     { ...referencia, path: "assinaturas/objeto.png\n" }, { ...referencia, path: "assinaturas/objeto.png\r" },
   ])("rejeita referência inválida ou fora do bucket configurado (%#)", async (entrada) => {
-    await expect(removerArquivo(entrada)).rejects.toMatchObject({ name: "ValidacaoError" });
+    await expect(removerArquivo(entrada)).rejects.toMatchObject({ name: "StorageError" });
     expect(remove).not.toHaveBeenCalled();
   });
 

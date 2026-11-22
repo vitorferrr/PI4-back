@@ -1,18 +1,21 @@
 import { inflateSync } from "node:zlib";
 import { PNG } from "pngjs";
 
-export const TAMANHO_MAXIMO_ASSINATURA = 2 * 1024 * 1024;
-export const DIMENSAO_MAXIMA_ASSINATURA = 4096;
+export const TAMANHO_MAXIMO_ASSINATURA = 512 * 1024;
+export const DIMENSAO_MAXIMA_ASSINATURA = 2048;
+export const PIXELS_MAXIMOS_ASSINATURA = 2_000_000;
+export const PROFUNDIDADE_MAXIMA_ASSINATURA = 8;
+const DADOS_DESCOMPRIMIDOS_MAXIMOS = PIXELS_MAXIMOS_ASSINATURA * 4 + DIMENSAO_MAXIMA_ASSINATURA * 2;
 
 const PREFIXO_DATA_URL = "data:image/png;base64,";
 const ASSINATURA_PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const CANAIS = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
 const PROFUNDIDADES = {
-  0: [1, 2, 4, 8, 16],
-  2: [8, 16],
+  0: [1, 2, 4, 8],
+  2: [8],
   3: [1, 2, 4, 8],
-  4: [8, 16],
-  6: [8, 16],
+  4: [8],
+  6: [8],
 };
 // Origem (x,y) e passo (x,y) das sete passagens Adam7.
 const PASSAGENS_ADAM7 = [
@@ -77,8 +80,14 @@ const inspecionarPng = (conteudo) => {
       if (!largura || !altura || largura > DIMENSAO_MAXIMA_ASSINATURA || altura > DIMENSAO_MAXIMA_ASSINATURA) {
         throw invalida(`A assinatura deve ter dimensões entre 1 e ${DIMENSAO_MAXIMA_ASSINATURA} pixels por eixo.`);
       }
+      if (largura * altura > PIXELS_MAXIMOS_ASSINATURA) {
+        throw invalida("A assinatura deve ter no máximo 2.000.000 de pixels.");
+      }
       const profundidade = dados[8];
       const cor = dados[9];
+      if (profundidade > PROFUNDIDADE_MAXIMA_ASSINATURA) {
+        throw invalida("A assinatura deve ter no máximo 8 bits por canal.");
+      }
       if (!PROFUNDIDADES[cor]?.includes(profundidade) || dados[10] !== 0 || dados[11] !== 0 || dados[12] > 1) throw invalida();
       cabecalho = {
         largura,
@@ -117,6 +126,7 @@ const inspecionarPng = (conteudo) => {
   }
 
   if (!terminou) throw invalida();
+  if (cabecalho.tamanhoEsperado > DADOS_DESCOMPRIMIDOS_MAXIMOS) throw invalida();
   // O limite impede bombas de descompressão, inclusive em imagens interlaçadas.
   const dadosComprimidos = Buffer.concat(dadosImagem);
   const { buffer: descomprimido, engine } = inflateSync(dadosComprimidos, {
@@ -133,19 +143,22 @@ export const validarImagemAssinatura = (imagem) => {
 
   // Verifica o comprimento antes de regex, decodificação e descompressão.
   const tamanhoMaximoBase64 = 4 * Math.ceil(TAMANHO_MAXIMO_ASSINATURA / 3);
-  if (imagem.length > tamanhoMaximoBase64 + PREFIXO_DATA_URL.length) throw invalida("A assinatura deve ter no máximo 2 MiB.");
+  if (imagem.length > tamanhoMaximoBase64 + PREFIXO_DATA_URL.length) throw invalida("A assinatura deve ter no máximo 512 KiB.");
   const base64 = imagem.startsWith(PREFIXO_DATA_URL) ? imagem.slice(PREFIXO_DATA_URL.length) : imagem;
   if (!base64.length) throw invalida("A imagem da assinatura é obrigatória.");
-  if (base64.length > tamanhoMaximoBase64) throw invalida("A assinatura deve ter no máximo 2 MiB.");
+  if (base64.length > tamanhoMaximoBase64) throw invalida("A assinatura deve ter no máximo 512 KiB.");
   if (base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) throw invalida("A imagem da assinatura deve usar Base64 válido ou Data URL PNG.");
 
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
-  if (base64.length / 4 * 3 - padding > TAMANHO_MAXIMO_ASSINATURA) throw invalida("A assinatura deve ter no máximo 2 MiB.");
+  if (base64.length / 4 * 3 - padding > TAMANHO_MAXIMO_ASSINATURA) throw invalida("A assinatura deve ter no máximo 512 KiB.");
   const conteudo = Buffer.from(base64, "base64");
   if (conteudo.toString("base64") !== base64) throw invalida("A imagem da assinatura deve usar Base64 canônico.");
 
   try {
     const { largura, altura } = inspecionarPng(conteudo);
+    // Mantém a API síncrona e a validação de pixels do pngjs. A descompressão
+    // anterior verifica EOF/checksum/limite: o decoder síncrono sozinho pode
+    // parar no tamanho esperado e não detectar bytes comprimidos excedentes.
     PNG.sync.read(conteudo, { checkCRC: true });
     return { conteudo, contentType: "image/png", largura, altura, tamanho: conteudo.length };
   } catch (erro) {

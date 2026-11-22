@@ -1,5 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
+let contextoAtual;
+let configuracaoAtual;
+
 const erroConfiguracao = () => {
   const erro = new Error("Configuração do Supabase Storage ausente ou inválida.");
   erro.name = "StorageConfiguracaoError";
@@ -30,14 +33,21 @@ export const getStorageContext = () => {
 
   try {
     const endereco = new URL(url);
+    const httpLocal = endereco.protocol === "http:" &&
+      ["localhost", "127.0.0.1"].includes(endereco.hostname);
     if (
-      endereco.protocol !== "https:" ||
+      (endereco.protocol !== "https:" && !httpLocal) ||
       endereco.username || endereco.password || endereco.search || endereco.hash ||
       endereco.pathname !== "/" ||
       !chave || !ehChaveServidor(chave) ||
       !bucket || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/.test(bucket)
     ) {
       throw erroConfiguracao();
+    }
+
+    if (configuracaoAtual?.url === endereco.origin &&
+        configuracaoAtual.chave === chave && configuracaoAtual.bucket === bucket) {
+      return contextoAtual;
     }
 
     const client = createClient(endereco.origin, chave, {
@@ -47,8 +57,12 @@ export const getStorageContext = () => {
         detectSessionInUrl: false,
       },
     });
-    return { client, bucket };
+    configuracaoAtual = { url: endereco.origin, chave, bucket };
+    contextoAtual = { client, bucket };
+    return contextoAtual;
   } catch {
+    contextoAtual = undefined;
+    configuracaoAtual = undefined;
     // Não propaga erros do SDK que possam carregar URL/chave fornecidas.
     throw erroConfiguracao();
   }

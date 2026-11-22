@@ -1,11 +1,18 @@
-import { deflateSync } from "node:zlib";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { deflateSync, inflateSync } from "node:zlib";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PNG } from "pngjs";
 import {
   validarImagemAssinatura,
   TAMANHO_MAXIMO_ASSINATURA,
   DIMENSAO_MAXIMA_ASSINATURA,
+  PIXELS_MAXIMOS_ASSINATURA,
+  PROFUNDIDADE_MAXIMA_ASSINATURA,
 } from "../utils/validarImagemAssinatura.js";
+
+vi.mock("node:zlib", async (importOriginal) => {
+  const original = await importOriginal();
+  return { ...original, inflateSync: vi.fn(original.inflateSync) };
+});
 
 const gerarPng = (largura = 2, altura = 3) => {
   const imagem = new PNG({ width: largura, height: altura });
@@ -37,6 +44,7 @@ const trocarCabecalho = (imagem, alterar) => {
 const pngValido = gerarPng();
 const base64Valido = pngValido.toString("base64");
 
+beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.restoreAllMocks());
 
 describe("validarImagemAssinatura", () => {
@@ -73,14 +81,14 @@ describe("validarImagemAssinatura", () => {
   it("rejeita Base64 muito grande antes de decodificar PNG", () => {
     const decodificar = vi.spyOn(PNG.sync, "read");
     const entrada = "A".repeat(4 * Math.ceil(TAMANHO_MAXIMO_ASSINATURA / 3) + 24);
-    expect(() => validarImagemAssinatura(entrada)).toThrow(/2 MiB/);
+    expect(() => validarImagemAssinatura(entrada)).toThrow(/512 KiB/);
     expect(decodificar).not.toHaveBeenCalled();
   });
 
   it("verifica o tamanho binário, inclusive quando o comprimento Base64 cabe no limite", () => {
     const entrada = Buffer.alloc(TAMANHO_MAXIMO_ASSINATURA + 1).toString("base64");
     const decodificar = vi.spyOn(PNG.sync, "read");
-    expect(() => validarImagemAssinatura(entrada)).toThrow(/2 MiB/);
+    expect(() => validarImagemAssinatura(entrada)).toThrow(/512 KiB/);
     expect(decodificar).not.toHaveBeenCalled();
   });
 
@@ -99,7 +107,7 @@ describe("validarImagemAssinatura", () => {
   });
 
   it("aceita um eixo exatamente no limite", () => {
-    expect(validarImagemAssinatura(gerarPng(DIMENSAO_MAXIMA_ASSINATURA, 1).toString("base64")).largura).toBe(4096);
+    expect(validarImagemAssinatura(gerarPng(DIMENSAO_MAXIMA_ASSINATURA, 1).toString("base64")).largura).toBe(DIMENSAO_MAXIMA_ASSINATURA);
   });
 
   it("rejeita arquivo truncado", () => {
@@ -234,5 +242,72 @@ describe("validarImagemAssinatura", () => {
       expect(erro.message).not.toContain(base64Valido);
       expect(erro.cause).toBeUndefined();
     }
+  });
+
+  it("exporta limites coerentes com o orçamento de recursos", () => {
+    expect(TAMANHO_MAXIMO_ASSINATURA).toBe(512 * 1024);
+    expect(DIMENSAO_MAXIMA_ASSINATURA).toBe(2048);
+    expect(PIXELS_MAXIMOS_ASSINATURA).toBe(2_000_000);
+    expect(PROFUNDIDADE_MAXIMA_ASSINATURA).toBe(8);
+  });
+
+  it.each([[4096, 4096, /dimensões/], [2048, 2048, /pixels/], [2000, 1001, /pixels/]])(
+    "rejeita PNG comprimido pequeno de %s x %s antes de qualquer descompressão",
+    (largura, altura, mensagem) => {
+      // Fixture PNG uniforme com scanlines válidas. Zlib nativo evita que a
+      // geração de milhões de pixels em JS domine o teste sob cobertura V8.
+      const cabecalho = trocarCabecalho(pngValido, (dados) => {
+        dados.writeUInt32BE(largura, 0);
+        dados.writeUInt32BE(altura, 4);
+      });
+      const comprimido = Buffer.concat([
+        cabecalho.subarray(0, 33), criarChunk("IDAT", deflateSync(Buffer.alloc((largura * 4 + 1) * altura))), criarChunk("IEND"),
+      ]);
+      expect(comprimido.length).toBeLessThan(TAMANHO_MAXIMO_ASSINATURA);
+      const decoder = vi.spyOn(PNG.sync, "read");
+      expect(() => validarImagemAssinatura(comprimido.toString("base64"))).toThrow(mensagem);
+      expect(inflateSync).not.toHaveBeenCalled();
+      expect(decoder).not.toHaveBeenCalled();
+    }
+  );
+
+  it("aceita exatamente 2.000.000 de pixels", () => {
+    const resultado = validarImagemAssinatura(gerarPng(2000, 1000).toString("base64"));
+    expect(resultado.largura * resultado.altura).toBe(PIXELS_MAXIMOS_ASSINATURA);
+  });
+
+  it.each([0, 2, 4, 6])("rejeita PNG de 16 bits por canal (cor %s) antes de descomprimir", (cor) => {
+    const imagem = trocarCabecalho(pngValido, (dados) => { dados[8] = 16; dados[9] = cor; });
+    expect(() => validarImagemAssinatura(imagem.toString("base64"))).toThrow(/8 bits/);
+    expect(inflateSync).not.toHaveBeenCalled();
+  });
+
+  it.each([1, 2, 4, 8])("preserva PNG grayscale válido de %s bits", (profundidade) => {
+    const cabecalho = trocarCabecalho(gerarPng(1, 1), (dados) => { dados[8] = profundidade; dados[9] = 0; });
+    const imagem = Buffer.concat([
+      cabecalho.subarray(0, 33), criarChunk("IDAT", deflateSync(Buffer.from([0, 0]))), criarChunk("IEND"),
+    ]);
+    expect(validarImagemAssinatura(imagem.toString("base64")).largura).toBe(1);
+  });
+
+  it("aceita exatamente 512 KiB e rejeita um byte acima antes de descomprimir", () => {
+    const completar = (tamanho) => Buffer.concat([
+      pngValido.subarray(0, 33), criarChunk("tEXt", Buffer.alloc(tamanho - pngValido.length - 12)), pngValido.subarray(33),
+    ]);
+    expect(validarImagemAssinatura(completar(TAMANHO_MAXIMO_ASSINATURA).toString("base64")).tamanho).toBe(TAMANHO_MAXIMO_ASSINATURA);
+    vi.clearAllMocks();
+    expect(() => validarImagemAssinatura(completar(TAMANHO_MAXIMO_ASSINATURA + 1).toString("base64"))).toThrow(/512 KiB/);
+    expect(inflateSync).not.toHaveBeenCalled();
+  });
+
+  it("rejeita bytes extras após o fim do zlib mesmo com CRC correto", () => {
+    const extra = Buffer.concat([deflateSync(Buffer.alloc(27)), Buffer.from([0, 1, 2])]);
+    const imagem = Buffer.concat([pngValido.subarray(0, 33), criarChunk("IDAT", extra), criarChunk("IEND")]);
+    expect(() => validarImagemAssinatura(imagem.toString("base64"))).toThrow(/PNG íntegra/);
+  });
+
+  it("usa limite explícito ao descomprimir antes do decoder", () => {
+    validarImagemAssinatura(base64Valido);
+    expect(inflateSync).toHaveBeenCalledWith(expect.any(Buffer), { maxOutputLength: 27, info: true });
   });
 });
