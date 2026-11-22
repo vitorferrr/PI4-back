@@ -1,14 +1,7 @@
 import models, { sequelize } from "../models/index.js";
+import erroValidacao from "../utils/erroValidacao.js";
 
 const { PerguntaQuestionario, RespostaQuestionario, Visita } = models;
-
-const erroValidacao = (mensagem, erros = [mensagem]) => {
-  const erro = new Error(mensagem);
-  erro.name = "ValidacaoError";
-  erro.errors = erros.map((message) => ({ message }));
-
-  return erro;
-};
 
 const FORMATOS = {
   sim_nao: {

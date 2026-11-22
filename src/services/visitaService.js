@@ -1,13 +1,7 @@
 import models, { sequelize } from "../models/index.js";
+import erroValidacao from "../utils/erroValidacao.js";
 
 const { Visita, Usuario, Documento, RespostaQuestionario } = models;
-
-const erroValidacao = (mensagem) => {
-  const erro = new Error(mensagem);
-  erro.name = "ValidacaoError";
-
-  return erro;
-};
 
 const includeGestor = {
   model: Usuario,
@@ -204,9 +198,7 @@ const validarCoordenadas = ({ latitude, longitude } = {}) => {
   }
 
   if (erros.length > 0) {
-    const erro = erroValidacao(erros[0]);
-    erro.errors = erros.map((message) => ({ message }));
-    throw erro;
+    throw erroValidacao(erros[0], erros);
   }
 
   return { latitude, longitude };
