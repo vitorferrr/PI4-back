@@ -1,13 +1,7 @@
 import models, { sequelize } from "../models/index.js";
+import erroValidacao from "../utils/erroValidacao.js";
 
 const { Visita, Usuario, Documento, RespostaQuestionario } = models;
-
-const erroValidacao = (mensagem) => {
-  const erro = new Error(mensagem);
-  erro.name = "ValidacaoError";
-
-  return erro;
-};
 
 const includeGestor = {
   model: Usuario,
@@ -24,6 +18,16 @@ const includeFiscalizadoresPadrao = {
     exclude: ["senha_hash"],
   },
   through: { attributes: [] },
+};
+
+const MAXIMO_FISCALIZADORES = 3;
+
+const validarQuantidadeFiscalizadores = (fiscalizadoresIds) => {
+  if (Array.isArray(fiscalizadoresIds) && new Set(fiscalizadoresIds).size > MAXIMO_FISCALIZADORES) {
+    throw erroValidacao(
+      `Uma visita pode ter no máximo ${MAXIMO_FISCALIZADORES} agentes fiscalizadores`
+    );
+  }
 };
 
 const criar = async (dados, fiscalizadoresIds = []) => {
@@ -49,6 +53,8 @@ const criar = async (dados, fiscalizadoresIds = []) => {
   if (!data_agendada) {
     throw erroValidacao("A data agendada é obrigatória");
   }
+
+  validarQuantidadeFiscalizadores(fiscalizadoresIds);
 
   const transaction = await sequelize.transaction();
 
@@ -128,24 +134,22 @@ const buscarPorId = async (id) => {
   return visita;
 };
 
-const atualizar = async (id, dados, fiscalizadoresIds) => {
-  const visita = await Visita.findByPk(id);
+const CAMPOS_EDITAVEIS = [
+  "denunciado",
+  "gestor_id",
+  "status",
+  "latitude",
+  "longitude",
+  "data_agendada",
+  "data_realizacao",
+  "observacoes_livres",
+];
 
-  if (!visita) {
-    return null;
-  }
+const atualizar = async (id, dados, fiscalizadoresIds) => {
+  validarQuantidadeFiscalizadores(fiscalizadoresIds);
 
   const dadosAtualizados = {};
-  [
-    "denunciado",
-    "gestor_id",
-    "status",
-    "latitude",
-    "longitude",
-    "data_agendada",
-    "data_realizacao",
-    "observacoes_livres",
-  ].forEach((campo) => {
+  CAMPOS_EDITAVEIS.forEach((campo) => {
     if (dados[campo] !== undefined) {
       dadosAtualizados[campo] = dados[campo];
     }
@@ -154,6 +158,23 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
   const transaction = await sequelize.transaction();
 
   try {
+    const visita = await Visita.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    const documento = await Documento.findOne({
+      attributes: ["id"],
+      where: { visita_id: id },
+      transaction,
+    });
+
+    if (documento) {
+      throw erroValidacao("O documento da visita já foi gerado; a visita não pode mais ser editada");
+    }
+
     await visita.update(dadosAtualizados, { transaction });
 
     if (Array.isArray(fiscalizadoresIds)) {
@@ -161,12 +182,12 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
     }
 
     await transaction.commit();
-
-    return await buscarPorId(id);
   } catch (erro) {
     await transaction.rollback();
     throw erro;
   }
+
+  return await buscarPorId(id);
 };
 
 // O status esperado faz parte do WHERE para que a checagem e a escrita sejam uma
@@ -204,9 +225,7 @@ const validarCoordenadas = ({ latitude, longitude } = {}) => {
   }
 
   if (erros.length > 0) {
-    const erro = erroValidacao(erros[0]);
-    erro.errors = erros.map((message) => ({ message }));
-    throw erro;
+    throw erroValidacao(erros[0], erros);
   }
 
   return { latitude, longitude };
@@ -235,13 +254,44 @@ const iniciar = async (id, coordenadas) => {
   );
 };
 
-const concluir = async (id) =>
-  await transicionarStatus(
-    id,
-    "em_andamento",
-    { status: "concluida" },
-    "Somente visitas em andamento podem ser concluídas"
-  );
+const concluir = async (id) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(id, {
+      attributes: ["id", "status"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    if (visita.status !== "em_andamento") {
+      throw erroValidacao("Somente visitas em andamento podem ser concluídas");
+    }
+
+    const documento = await Documento.findOne({
+      attributes: ["id"],
+      where: { visita_id: id },
+      transaction,
+    });
+
+    if (!documento) {
+      throw erroValidacao("Gere o documento da visita antes de concluí-la");
+    }
+
+    await Visita.update({ status: "concluida" }, { where: { id }, transaction });
+    await transaction.commit();
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+
+  return await buscarPorId(id);
+};
 
 const remover = async (id) => {
   const visita = await Visita.findByPk(id);
