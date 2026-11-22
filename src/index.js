@@ -6,6 +6,7 @@ import usuarioRoutes from "./routes/usuarioRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import visitaRoutes from "./routes/visitaRoutes.js";
 import questionarioRoutes from "./routes/questionarioRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 import errorHandler from "./middlewares/errorHandler.js";
 
 const app = express();
@@ -28,6 +29,7 @@ app.use("/usuarios", usuarioRoutes);
 app.use("/auth", authRoutes);
 app.use("/visitas", visitaRoutes);
 app.use("/questionario", questionarioRoutes);
+app.use("/admin", adminRoutes);
 
 app.get("/", (req, res) => {
   return res.send("Servidor express executando...");
