@@ -227,13 +227,44 @@ const iniciar = async (id, coordenadas) => {
   );
 };
 
-const concluir = async (id) =>
-  await transicionarStatus(
-    id,
-    "em_andamento",
-    { status: "concluida" },
-    "Somente visitas em andamento podem ser concluídas"
-  );
+const concluir = async (id) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(id, {
+      attributes: ["id", "status"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    if (visita.status !== "em_andamento") {
+      throw erroValidacao("Somente visitas em andamento podem ser concluídas");
+    }
+
+    const documento = await Documento.findOne({
+      attributes: ["id"],
+      where: { visita_id: id },
+      transaction,
+    });
+
+    if (!documento) {
+      throw erroValidacao("Gere o documento da visita antes de concluí-la");
+    }
+
+    await Visita.update({ status: "concluida" }, { where: { id }, transaction });
+    await transaction.commit();
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+
+  return await buscarPorId(id);
+};
 
 const remover = async (id) => {
   const visita = await Visita.findByPk(id);

@@ -6,7 +6,7 @@ import visitaService from "../services/visitaService.js";
 import getVisitaModel from "../models/visita.js";
 
 vi.mock("../models/index.js", () => {
-  const transacao = { commit: vi.fn(), rollback: vi.fn() };
+  const transacao = { commit: vi.fn(), rollback: vi.fn(), LOCK: { UPDATE: "UPDATE" } };
 
   return {
     sequelize: {
@@ -21,13 +21,15 @@ vi.mock("../models/index.js", () => {
         update: vi.fn(),
       },
       Usuario: {},
-      Documento: {},
+      Documento: {
+        findOne: vi.fn(),
+      },
       RespostaQuestionario: {},
     },
   };
 });
 
-const { Visita } = models;
+const { Documento, Visita } = models;
 const { transacao } = sequelize;
 
 const sequelizeTeste = new Sequelize("postgres://teste:teste@localhost:5432/teste", {
@@ -336,40 +338,75 @@ describe("iniciar visita", () => {
 });
 
 describe("concluir visita", () => {
-  it("atualiza condicionando ao status em_andamento", async () => {
+  beforeEach(() => {
+    Visita.findByPk.mockResolvedValueOnce({ id: 10, status: "em_andamento" });
+    Documento.findOne.mockResolvedValue({ id: 7 });
+  });
+
+  it("trava a visita, confere o documento e conclui", async () => {
     Visita.update.mockResolvedValue([1]);
-    Visita.findByPk.mockResolvedValue({ id: 10, status: "concluida" });
+    Visita.findByPk.mockResolvedValueOnce({ id: 10, status: "concluida" });
 
     const resultado = await visitaService.concluir(10);
 
+    expect(Visita.findByPk).toHaveBeenNthCalledWith(1, 10, {
+      attributes: ["id", "status"],
+      transaction: transacao,
+      lock: transacao.LOCK.UPDATE,
+    });
+    expect(Documento.findOne).toHaveBeenCalledWith({
+      attributes: ["id"],
+      where: { visita_id: 10 },
+      transaction: transacao,
+    });
     expect(Visita.update).toHaveBeenCalledWith(
       { status: "concluida" },
-      { where: { id: 10, status: "em_andamento" } }
+      { where: { id: 10 }, transaction: transacao }
     );
+    expect(transacao.commit).toHaveBeenCalledTimes(1);
     expect(resultado).toEqual({ id: 10, status: "concluida" });
   });
 
-  it("rejeita quando nenhuma linha é alterada e a visita existe, como em requisição simultânea", async () => {
-    Visita.update.mockResolvedValue([0]);
-    Visita.findByPk.mockResolvedValue({ id: 10, status: "agendada" });
+  it("rejeita concluir a visita sem documento gerado", async () => {
+    Documento.findOne.mockResolvedValue(null);
 
     await expect(visitaService.concluir(10)).rejects.toMatchObject({
       name: "ValidacaoError",
-      message: "Somente visitas em andamento podem ser concluídas",
+      message: "Gere o documento da visita antes de concluí-la",
     });
+    expect(Visita.update).not.toHaveBeenCalled();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
   });
 
-  it("retorna null quando a visita não existe", async () => {
-    Visita.update.mockResolvedValue([0]);
+  it.each(["agendada", "concluida", "cancelada"])(
+    "rejeita visita com status %s",
+    async (status) => {
+      Visita.findByPk.mockReset();
+      Visita.findByPk.mockResolvedValue({ id: 10, status });
+
+      await expect(visitaService.concluir(10)).rejects.toMatchObject({
+        name: "ValidacaoError",
+        message: "Somente visitas em andamento podem ser concluídas",
+      });
+      expect(Documento.findOne).not.toHaveBeenCalled();
+      expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("retorna null e desfaz a transação quando a visita não existe", async () => {
+    Visita.findByPk.mockReset();
     Visita.findByPk.mockResolvedValue(null);
 
     expect(await visitaService.concluir(99)).toBeNull();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
   });
 
-  it("propaga o erro quando a atualização falha", async () => {
+  it("desfaz a transação quando a atualização falha", async () => {
     Visita.update.mockRejectedValue(new Error("falha no banco"));
 
     await expect(visitaService.concluir(10)).rejects.toThrow("falha no banco");
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    expect(transacao.commit).not.toHaveBeenCalled();
   });
 });
 
