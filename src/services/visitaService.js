@@ -103,6 +103,12 @@ const listar = async (filtros = {}) => {
   });
 };
 
+const buscarParaAcesso = async (id) =>
+  await Visita.findByPk(id, {
+    attributes: ["id", "status"],
+    include: [{ ...includeFiscalizadoresPadrao, attributes: ["id"] }],
+  });
+
 const buscarPorId = async (id) => {
   const visita = await Visita.findByPk(id, {
     include: [
@@ -183,13 +189,51 @@ const transicionarStatus = async (id, statusEsperado, novosDados, mensagemErro) 
   return await buscarPorId(id);
 };
 
-const iniciar = async (id) =>
-  await transicionarStatus(
+const coordenadaValida = (valor, limite) =>
+  typeof valor === "number" && Number.isFinite(valor) && Math.abs(valor) <= limite;
+
+const validarCoordenadas = ({ latitude, longitude } = {}) => {
+  const erros = [];
+
+  if (!coordenadaValida(latitude, 90)) {
+    erros.push("A latitude deve ser um número entre -90 e 90");
+  }
+
+  if (!coordenadaValida(longitude, 180)) {
+    erros.push("A longitude deve ser um número entre -180 e 180");
+  }
+
+  if (erros.length > 0) {
+    const erro = erroValidacao(erros[0]);
+    erro.errors = erros.map((message) => ({ message }));
+    throw erro;
+  }
+
+  return { latitude, longitude };
+};
+
+const MENSAGEM_SO_AGENDADAS = "Somente visitas agendadas podem ser iniciadas";
+
+const iniciar = async (id, coordenadas) => {
+  const visita = await Visita.findByPk(id, { attributes: ["id", "status"] });
+
+  if (!visita) {
+    return null;
+  }
+
+  if (visita.status !== "agendada") {
+    throw erroValidacao(MENSAGEM_SO_AGENDADAS);
+  }
+
+  const { latitude, longitude } = validarCoordenadas(coordenadas);
+
+  return await transicionarStatus(
     id,
     "agendada",
-    { status: "em_andamento", data_realizacao: new Date() },
-    "Somente visitas agendadas podem ser iniciadas"
+    { status: "em_andamento", data_realizacao: new Date(), latitude, longitude },
+    MENSAGEM_SO_AGENDADAS
   );
+};
 
 const concluir = async (id) =>
   await transicionarStatus(
@@ -215,6 +259,7 @@ export default {
   criar,
   listar,
   buscarPorId,
+  buscarParaAcesso,
   atualizar,
   iniciar,
   concluir,

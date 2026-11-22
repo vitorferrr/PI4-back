@@ -14,6 +14,13 @@ vi.mock("../services/visitaService.js", () => ({
   },
 }));
 
+vi.mock("../services/questionarioService.js", () => ({
+  default: {
+    listar: vi.fn(),
+    salvarRespostas: vi.fn(),
+  },
+}));
+
 const SEGREDO = "segredo-de-teste";
 const visitaDoFiscalizador5 = { id: 10, fiscalizadores: [{ id: 5 }] };
 
@@ -283,7 +290,7 @@ describe.each([
     const resposta = await requisitar("PATCH", `/10/${acao}`);
 
     expect(resposta.status).toBe(200);
-    expect(visitaService[acao]).toHaveBeenCalledWith("10");
+    expect(visitaService[acao].mock.calls[0][0]).toBe("10");
   });
 
   it("responde 404 e não altera a visita para fiscalizador não associado", async () => {
@@ -293,15 +300,6 @@ describe.each([
 
     expect(resposta.status).toBe(404);
     expect(visitaService[acao]).not.toHaveBeenCalled();
-  });
-
-  it("permite que gestor aplique a transição sem estar associado", async () => {
-    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
-    visitaService[acao].mockResolvedValue({ id: 10 });
-
-    const resposta = await requisitar("PATCH", `/10/${acao}`, "gestor", 1);
-
-    expect(resposta.status).toBe(200);
   });
 
   it("responde 404 quando a visita não existe", async () => {
@@ -349,6 +347,59 @@ describe.each([
 
     expect(resposta.status).toBe(404);
     expect(visitaService[acao]).not.toHaveBeenCalled();
+  });
+});
+
+describe("perfis que podem iniciar e concluir", () => {
+  it("permite que gestor conclua a visita sem estar associado", async () => {
+    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.concluir.mockResolvedValue({ id: 10 });
+
+    const resposta = await requisitar("PATCH", "/10/concluir", "gestor", 1);
+
+    expect(resposta.status).toBe(200);
+  });
+
+  it.each(["gestor", "admin"])("responde 403 quando %s tenta iniciar a visita", async (role) => {
+    const resposta = await requisitar("PATCH", "/10/iniciar", role, 1, {
+      latitude: -8.1,
+      longitude: -35,
+    });
+
+    expect(resposta.status).toBe(403);
+    expect(visitaService.iniciar).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /visitas/:id/iniciar com localização", () => {
+  it("repassa a latitude e a longitude do corpo para o service", async () => {
+    const coordenadas = { latitude: -8.1127, longitude: -35.0147 };
+    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.iniciar.mockResolvedValue({ id: 10, ...coordenadas });
+
+    const resposta = await requisitar("PATCH", "/10/iniciar", "fiscalizador", 5, coordenadas);
+
+    expect(resposta.status).toBe(200);
+    expect(visitaService.iniciar).toHaveBeenCalledWith("10", coordenadas);
+  });
+
+  it("responde 400 com os erros quando a localização é inválida", async () => {
+    const erro = new Error("A latitude deve ser um número entre -90 e 90");
+    erro.name = "ValidacaoError";
+    erro.errors = [{ message: "A latitude deve ser um número entre -90 e 90" }];
+    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.iniciar.mockRejectedValue(erro);
+
+    const resposta = await requisitar("PATCH", "/10/iniciar", "fiscalizador", 5, {
+      latitude: 200,
+      longitude: -35,
+    });
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Erro ao iniciar visita",
+      erros: ["A latitude deve ser um número entre -90 e 90"],
+    });
   });
 });
 

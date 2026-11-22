@@ -1,16 +1,6 @@
 import visitaService from "../services/visitaService.js";
 import tratarErro from "../utils/tratarErro.js";
-
-const podeAcessarVisita = (usuario, visita) =>
-  usuario?.role !== "fiscalizador" ||
-  visita.fiscalizadores?.some((fiscalizador) => fiscalizador.id === usuario.id);
-
-// Fiscalizador não associado recebe a mesma resposta de uma visita inexistente,
-// para que não seja possível descobrir quais ids existem.
-const responderNaoEncontrada = (res) =>
-  res.status(404).json({
-    mensagem: "Visita não encontrada",
-  });
+import { podeAcessarVisita, responderNaoEncontrada } from "../utils/acessoVisita.js";
 
 const transicionar = (transicao, mensagemErro) => async (req, res) => {
   try {
@@ -20,7 +10,7 @@ const transicionar = (transicao, mensagemErro) => async (req, res) => {
       return responderNaoEncontrada(res);
     }
 
-    const visitaAtualizada = await transicao(req.params.id);
+    const visitaAtualizada = await transicao(req.params.id, req);
 
     if (!visitaAtualizada) {
       return responderNaoEncontrada(res);
@@ -88,9 +78,12 @@ const buscarPorId = async (req, res) => {
   }
 };
 
-const iniciar = transicionar(visitaService.iniciar, "Erro ao iniciar visita");
+const iniciar = transicionar(
+  (id, req) => visitaService.iniciar(id, req.body),
+  "Erro ao iniciar visita"
+);
 
-const concluir = transicionar(visitaService.concluir, "Erro ao concluir visita");
+const concluir = transicionar((id) => visitaService.concluir(id), "Erro ao concluir visita");
 
 export default {
   criar,
