@@ -16,6 +16,9 @@ vi.mock("../models/index.js", () => {
       transacao,
     },
     default: {
+      Documento: {
+        findOne: vi.fn(),
+      },
       PerguntaQuestionario: {
         findAll: vi.fn(),
       },
@@ -30,7 +33,7 @@ vi.mock("../models/index.js", () => {
   };
 });
 
-const { PerguntaQuestionario, RespostaQuestionario, Visita } = models;
+const { Documento, PerguntaQuestionario, RespostaQuestionario, Visita } = models;
 const { transacao } = sequelize;
 
 const sequelizeTeste = new Sequelize("postgres://teste:teste@localhost:5432/teste", {
@@ -146,6 +149,7 @@ describe("salvar respostas do questionário", () => {
 
   beforeEach(() => {
     Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
+    Documento.findOne.mockResolvedValue(null);
     PerguntaQuestionario.findAll.mockResolvedValue(perguntas);
   });
 
@@ -205,6 +209,24 @@ describe("salvar respostas do questionário", () => {
       expect(transacao.rollback).toHaveBeenCalledTimes(1);
     }
   );
+
+  it("rejeita alterar as respostas depois que o documento foi gerado", async () => {
+    Documento.findOne.mockResolvedValue({ id: 7 });
+
+    await expect(
+      questionarioService.salvarRespostas(10, respostasValidas)
+    ).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "O documento da visita já foi gerado; as respostas não podem mais ser alteradas",
+    });
+    expect(Documento.findOne).toHaveBeenCalledWith({
+      attributes: ["id"],
+      where: { visita_id: 10 },
+      transaction: transacao,
+    });
+    expect(RespostaQuestionario.bulkCreate).not.toHaveBeenCalled();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+  });
 
   it("confere o status antes de validar as respostas", async () => {
     Visita.findByPk.mockResolvedValue({ id: 10, status: "concluida" });
