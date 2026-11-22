@@ -77,6 +77,38 @@ describe("criar visita", () => {
     expect(resultado.id).toBe(10);
   });
 
+  it("grava os dados do estabelecimento informados pelo gestor", async () => {
+    const estabelecimento = {
+      razao_social: "Bom Preço Comércio de Alimentos LTDA",
+      nome_fantasia: "Mercado Bom Preço",
+      endereco: "Av. Barreto de Menezes, 100",
+      bairro: "Prazeres",
+      cep: "54310-000",
+      telefone: "(81) 3333-4444",
+      cnpj_cpf: "12.345.678/0001-90",
+      atividade: "Supermercado",
+    };
+    Visita.create.mockResolvedValue(criarVisitaFalsa(dadosVisita));
+    Visita.findByPk.mockResolvedValue({ id: 10 });
+
+    await visitaService.criar({ ...dadosVisita, ...estabelecimento, campoInvalido: "x" });
+
+    const dadosSalvos = Visita.create.mock.calls[0][0];
+    expect(dadosSalvos).toMatchObject(estabelecimento);
+    expect(dadosSalvos).not.toHaveProperty("campoInvalido");
+  });
+
+  it("não envia ao banco campos do estabelecimento que não foram informados", async () => {
+    Visita.create.mockResolvedValue(criarVisitaFalsa(dadosVisita));
+    Visita.findByPk.mockResolvedValue({ id: 10 });
+
+    await visitaService.criar({ ...dadosVisita, nome_fantasia: "Mercado Bom Preço" });
+
+    const dadosSalvos = Visita.create.mock.calls[0][0];
+    expect(dadosSalvos.nome_fantasia).toBe("Mercado Bom Preço");
+    expect(dadosSalvos).not.toHaveProperty("razao_social");
+  });
+
   it("não associa fiscalizadores quando a lista está vazia", async () => {
     const visitaCriada = criarVisitaFalsa(dadosVisita);
     Visita.create.mockResolvedValue(visitaCriada);
@@ -237,6 +269,18 @@ describe("atualizar visita", () => {
     });
     expect(transacao.commit).toHaveBeenCalledTimes(1);
     expect(resultado).toEqual({ id: 10 });
+  });
+
+  it("permite corrigir os dados do estabelecimento antes do documento", async () => {
+    const visita = criarVisitaFalsa(dadosVisita);
+    Visita.findByPk.mockResolvedValueOnce(visita).mockResolvedValueOnce({ id: 10 });
+
+    await visitaService.atualizar(10, { cnpj_cpf: "12.345.678/0001-90", bairro: "Piedade" });
+
+    expect(visita.update).toHaveBeenCalledWith(
+      { cnpj_cpf: "12.345.678/0001-90", bairro: "Piedade" },
+      { transaction: transacao }
+    );
   });
 
   it("não mexe nos fiscalizadores quando a lista não é enviada", async () => {
@@ -492,6 +536,14 @@ describe("validações do modelo Visita", () => {
 
     await expect(visita.validate()).resolves.toBeDefined();
     expect(visita.status).toBe("agendada");
+  });
+
+  it("tem os dados do estabelecimento como opcionais", () => {
+    const atributos = VisitaModelo.getAttributes();
+
+    for (const campo of ["razao_social", "nome_fantasia", "endereco", "bairro", "cep", "telefone", "cnpj_cpf", "atividade"]) {
+      expect(atributos[campo].allowNull).toBe(true);
+    }
   });
 
   it("exige denunciado não vazio", async () => {

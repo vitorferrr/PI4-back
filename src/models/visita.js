@@ -56,6 +56,38 @@ const getVisitaModel = (sequelize, { DataTypes }) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      razao_social: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      nome_fantasia: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      endereco: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      bairro: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      cep: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      telefone: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      cnpj_cpf: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      atividade: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
     },
     {
       tableName: "visitas",

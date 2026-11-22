@@ -22,6 +22,22 @@ const includeFiscalizadoresPadrao = {
 
 const MAXIMO_FISCALIZADORES = 3;
 
+const CAMPOS_ESTABELECIMENTO = [
+  "razao_social",
+  "nome_fantasia",
+  "endereco",
+  "bairro",
+  "cep",
+  "telefone",
+  "cnpj_cpf",
+  "atividade",
+];
+
+const escolherCampos = (dados, campos) =>
+  Object.fromEntries(
+    campos.filter((campo) => dados[campo] !== undefined).map((campo) => [campo, dados[campo]])
+  );
+
 const validarQuantidadeFiscalizadores = (fiscalizadoresIds) => {
   if (Array.isArray(fiscalizadoresIds) && new Set(fiscalizadoresIds).size > MAXIMO_FISCALIZADORES) {
     throw erroValidacao(
@@ -69,6 +85,7 @@ const criar = async (dados, fiscalizadoresIds = []) => {
         data_agendada,
         data_realizacao,
         observacoes_livres,
+        ...escolherCampos(dados, CAMPOS_ESTABELECIMENTO),
       },
       { transaction }
     );
@@ -143,17 +160,13 @@ const CAMPOS_EDITAVEIS = [
   "data_agendada",
   "data_realizacao",
   "observacoes_livres",
+  ...CAMPOS_ESTABELECIMENTO,
 ];
 
 const atualizar = async (id, dados, fiscalizadoresIds) => {
   validarQuantidadeFiscalizadores(fiscalizadoresIds);
 
-  const dadosAtualizados = {};
-  CAMPOS_EDITAVEIS.forEach((campo) => {
-    if (dados[campo] !== undefined) {
-      dadosAtualizados[campo] = dados[campo];
-    }
-  });
+  const dadosAtualizados = escolherCampos(dados, CAMPOS_EDITAVEIS);
 
   const transaction = await sequelize.transaction();
 
