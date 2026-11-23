@@ -1,3 +1,5 @@
+import emailValido from "../utils/emailValido.js";
+
 const getAssinaturaModel = (sequelize, { DataTypes, Op }) => {
   const Assinatura = sequelize.define(
     "assinatura",
@@ -37,7 +39,11 @@ const getAssinaturaModel = (sequelize, { DataTypes, Op }) => {
         type: DataTypes.STRING,
         allowNull: true,
         validate: {
-          isEmail: true,
+          emailValido(valor) {
+            if (valor != null && !emailValido(valor)) {
+              throw new Error("E-mail do responsável inválido");
+            }
+          },
         },
       },
       recusou: {

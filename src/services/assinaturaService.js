@@ -1,18 +1,19 @@
 import models, { sequelize } from "../models/index.js";
+import { podeAcessarVisita } from "../utils/acessoVisita.js";
+import emailValido from "../utils/emailValido.js";
 import erroValidacao from "../utils/erroValidacao.js";
 import { validarImagemAssinatura } from "../utils/validarImagemAssinatura.js";
 import { removerArquivo, uploadArquivo } from "./storageService.js";
 
 const { Assinatura, Documento, Usuario, Visita } = models;
 
-const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TAMANHO_MAXIMO_TEXTO = 255;
 
 const textoOpcional = (valor) =>
   typeof valor === "string" && valor.trim() ? valor.trim() : null;
 
 const montarAssinante = (dados) => {
-  const { assinante_tipo: tipo, usuario_id: usuarioId, imagem } = dados;
+  const { assinante_tipo: tipo, imagem } = dados;
 
   if (dados.recusou !== undefined && dados.recusou !== null && typeof dados.recusou !== "boolean") {
     throw erroValidacao("O campo recusou deve ser verdadeiro ou falso");
@@ -21,12 +22,9 @@ const montarAssinante = (dados) => {
   const recusou = dados.recusou === true;
 
   if (tipo === "fiscalizador") {
-    if (!Number.isInteger(usuarioId) || usuarioId < 1) {
-      throw erroValidacao("Informe o fiscalizador que está assinando");
-    }
     if (recusou) throw erroValidacao("Somente o responsável pelo estabelecimento pode recusar");
 
-    return { tipo, usuarioId, recusou, png: validarImagemAssinatura(imagem) };
+    return { tipo, recusou, png: validarImagemAssinatura(imagem) };
   }
 
   if (tipo === "denunciado") {
@@ -40,7 +38,7 @@ const montarAssinante = (dados) => {
         `Nome, documento e e-mail do responsável devem ter no máximo ${TAMANHO_MAXIMO_TEXTO} caracteres`
       );
     }
-    if (email && !EMAIL_VALIDO.test(email)) {
+    if (email && !emailValido(email)) {
       throw erroValidacao("Informe um e-mail válido para o responsável");
     }
     if (recusou && imagem !== undefined && imagem !== null) {
@@ -60,109 +58,117 @@ const montarAssinante = (dados) => {
   throw erroValidacao("O tipo de assinante deve ser fiscalizador ou denunciado");
 };
 
-const buscarParaAcesso = async (documentoId) =>
-  await Documento.findByPk(documentoId, {
-    attributes: ["id", "visita_id"],
+const conferirRegras = async (documentoId, assinante, usuario, transaction) => {
+  const documento = await Documento.findByPk(
+    documentoId,
+    transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {}
+  );
+
+  if (!documento) return null;
+
+  const visita = await Visita.findByPk(documento.visita_id, {
+    attributes: ["id", "status"],
     include: [
       {
-        model: Visita,
-        as: "visita",
-        attributes: ["id"],
-        include: [
-          {
-            model: Usuario,
-            as: "fiscalizadores",
-            attributes: ["id"],
-            through: { attributes: [] },
-          },
-        ],
+        model: Usuario,
+        as: "fiscalizadores",
+        attributes: ["id", "nome"],
+        through: { attributes: [] },
       },
     ],
+    transaction,
   });
 
-const registrar = async (documentoId, dados = {}) => {
+  if (!visita || !podeAcessarVisita(usuario, visita)) return null;
+
+  if (documento.url_arquivo_pdf) {
+    throw erroValidacao("O PDF do documento já foi gerado; não é possível assinar");
+  }
+
+  if (visita.status !== "em_andamento") {
+    throw erroValidacao("Só é possível assinar documentos de visitas em andamento");
+  }
+
+  const ehFiscal = assinante.tipo === "fiscalizador";
+  const fiscal = ehFiscal
+    ? visita.fiscalizadores?.find((item) => item.id === usuario.id)
+    : null;
+
+  if (ehFiscal && !fiscal) {
+    throw erroValidacao("O usuário logado não é fiscalizador desta visita");
+  }
+
+  const existente = await Assinatura.findOne({
+    attributes: ["id"],
+    where: ehFiscal
+      ? { documento_id: documento.id, usuario_id: fiscal.id }
+      : { documento_id: documento.id, assinante_tipo: "denunciado" },
+    transaction,
+  });
+
+  if (existente) {
+    throw erroValidacao(
+      ehFiscal
+        ? "Este fiscalizador já assinou o documento"
+        : "O responsável já assinou ou recusou o documento"
+    );
+  }
+
+  return {
+    documento,
+    visita,
+    dadosAssinatura: ehFiscal
+      ? { usuario_id: fiscal.id, assinante_nome: fiscal.nome }
+      : {
+          usuario_id: null,
+          assinante_nome: assinante.nome,
+          assinante_documento: assinante.documento,
+          assinante_email: assinante.email,
+        },
+  };
+};
+
+const removerImagem = async (arquivo) => {
+  if (!arquivo) return;
+
+  await removerArquivo(arquivo).catch((erro) =>
+    console.error("Falha ao remover imagem de assinatura órfã:", arquivo.path, erro.message)
+  );
+};
+
+const registrar = async (documentoId, dados, usuario) => {
   const assinante = montarAssinante(dados ?? {});
-  const transaction = await sequelize.transaction();
   let arquivo = null;
 
+  if (assinante.png) {
+    const conferencia = await conferirRegras(documentoId, assinante, usuario);
+
+    if (!conferencia) return null;
+
+    arquivo = await uploadArquivo({
+      conteudo: assinante.png.conteudo,
+      contentType: assinante.png.contentType,
+      diretorio: `visitas/${conferencia.visita.id}/assinaturas`,
+    });
+  }
+
+  let transaction;
+
   try {
-    const documento = await Documento.findByPk(documentoId, {
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
+    transaction = await sequelize.transaction();
 
-    if (!documento) {
+    const conferencia = await conferirRegras(documentoId, assinante, usuario, transaction);
+
+    if (!conferencia) {
       await transaction.rollback();
+      await removerImagem(arquivo);
       return null;
-    }
-
-    if (documento.url_arquivo_pdf) {
-      throw erroValidacao("O PDF do documento já foi gerado; não é possível assinar");
-    }
-
-    const visita = await Visita.findByPk(documento.visita_id, {
-      attributes: ["id", "status"],
-      include: [
-        {
-          model: Usuario,
-          as: "fiscalizadores",
-          attributes: ["id", "nome"],
-          through: { attributes: [] },
-        },
-      ],
-      transaction,
-    });
-
-    if (visita?.status !== "em_andamento") {
-      throw erroValidacao("Só é possível assinar documentos de visitas em andamento");
-    }
-
-    let dadosAssinatura;
-
-    if (assinante.tipo === "fiscalizador") {
-      const fiscal = visita.fiscalizadores?.find((item) => item.id === assinante.usuarioId);
-
-      if (!fiscal) throw erroValidacao("O fiscalizador informado não faz parte da visita");
-
-      dadosAssinatura = { usuario_id: fiscal.id, assinante_nome: fiscal.nome };
-    } else {
-      dadosAssinatura = {
-        usuario_id: null,
-        assinante_nome: assinante.nome,
-        assinante_documento: assinante.documento,
-        assinante_email: assinante.email,
-      };
-    }
-
-    const existente = await Assinatura.findOne({
-      attributes: ["id"],
-      where:
-        assinante.tipo === "fiscalizador"
-          ? { documento_id: documento.id, usuario_id: assinante.usuarioId }
-          : { documento_id: documento.id, assinante_tipo: "denunciado" },
-      transaction,
-    });
-
-    if (existente) {
-      throw erroValidacao(
-        assinante.tipo === "fiscalizador"
-          ? "Este fiscalizador já assinou o documento"
-          : "O responsável já assinou ou recusou o documento"
-      );
-    }
-
-    if (assinante.png) {
-      arquivo = await uploadArquivo({
-        conteudo: assinante.png.conteudo,
-        contentType: assinante.png.contentType,
-        diretorio: `visitas/${visita.id}/assinaturas`,
-      });
     }
 
     const assinatura = await Assinatura.create(
       {
-        documento_id: documento.id,
-        ...dadosAssinatura,
+        documento_id: conferencia.documento.id,
+        ...conferencia.dadosAssinatura,
         assinante_tipo: assinante.tipo,
         recusou: assinante.recusou,
         imagem_assinatura_url: arquivo?.path ?? null,
@@ -175,12 +181,10 @@ const registrar = async (documentoId, dados = {}) => {
 
     return assinatura;
   } catch (erro) {
-    if (!transaction.finished) await transaction.rollback();
-
-    if (arquivo) {
-      await removerArquivo(arquivo).catch((erroRemocao) =>
-        console.error("Falha ao remover imagem de assinatura órfã:", erroRemocao.codigo)
-      );
+    try {
+      if (transaction && !transaction.finished) await transaction.rollback();
+    } finally {
+      await removerImagem(arquivo);
     }
 
     throw erro;
@@ -188,6 +192,5 @@ const registrar = async (documentoId, dados = {}) => {
 };
 
 export default {
-  buscarParaAcesso,
   registrar,
 };
