@@ -106,6 +106,9 @@ describe("corpo das requisições", () => {
     const resposta = await enviarCorpo(app, 1100 * 1024);
 
     expect(resposta.status).toBe(413);
+    expect(await resposta.json()).toEqual({
+      mensagem: "O corpo da requisição deve ter no máximo 1 MB",
+    });
   });
 });
 

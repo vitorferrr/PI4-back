@@ -12,6 +12,13 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+app.use((erro, req, res, next) => {
+  if (erro.type !== "entity.too.large") return next(erro);
+
+  return res.status(413).json({
+    mensagem: "O corpo da requisição deve ter no máximo 1 MB",
+  });
+});
 app.use(express.urlencoded({ extended: true }));
 app.use(async (req, res, next) => {
   try {
