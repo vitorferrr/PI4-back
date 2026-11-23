@@ -95,6 +95,7 @@ const getAssinaturaModel = (sequelize, { DataTypes, Op }) => {
     Assinatura.belongsTo(models.Usuario, {
       foreignKey: "usuario_id",
       as: "usuario",
+      onDelete: "RESTRICT",
     });
   };
 

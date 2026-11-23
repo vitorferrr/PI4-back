@@ -199,6 +199,10 @@ describe("registrar assinatura do responsável", () => {
     [{ assinante_nome: "  " }, "Informe o nome do responsável pelo estabelecimento"],
     [{ assinante_email: "sem-arroba" }, "Informe um e-mail válido para o responsável"],
     [{ recusou: true }, "Não envie a imagem quando o responsável recusar a assinatura"],
+    [{ recusou: "true" }, "O campo recusou deve ser verdadeiro ou falso"],
+    [{ assinante_nome: "a".repeat(256) }, "Nome, documento e e-mail do responsável devem ter no máximo 255 caracteres"],
+    [{ assinante_documento: "1".repeat(256) }, "Nome, documento e e-mail do responsável devem ter no máximo 255 caracteres"],
+    [{ assinante_email: `${"a".repeat(250)}@loja.com` }, "Nome, documento e e-mail do responsável devem ter no máximo 255 caracteres"],
   ])("rejeita dados inválidos sem abrir transação (%o)", async (alteracao, mensagem) => {
     await expect(
       assinaturaService.registrar(7, { ...assinaturaResponsavel, ...alteracao })
@@ -329,6 +333,15 @@ describe("modelo Assinatura", () => {
         assinante_email: "invalido",
       }).validate()
     ).rejects.toThrow();
+  });
+
+  it("impede apagar um fiscal que já assinou", () => {
+    const Usuario = sequelizeTeste.define("usuario", {}, { tableName: "usuarios" });
+    const Documento = sequelizeTeste.define("documento", {}, { tableName: "documentos" });
+
+    AssinaturaModelo.associate({ Usuario, Documento });
+
+    expect(AssinaturaModelo.getAttributes().usuario_id.onDelete).toBe("RESTRICT");
   });
 
   it("garante uma assinatura por fiscal e uma do responsável por documento", () => {

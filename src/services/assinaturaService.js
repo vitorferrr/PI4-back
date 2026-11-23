@@ -6,12 +6,18 @@ import { removerArquivo, uploadArquivo } from "./storageService.js";
 const { Assinatura, Documento, Usuario, Visita } = models;
 
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TAMANHO_MAXIMO_TEXTO = 255;
 
 const textoOpcional = (valor) =>
   typeof valor === "string" && valor.trim() ? valor.trim() : null;
 
 const montarAssinante = (dados) => {
   const { assinante_tipo: tipo, usuario_id: usuarioId, imagem } = dados;
+
+  if (dados.recusou !== undefined && dados.recusou !== null && typeof dados.recusou !== "boolean") {
+    throw erroValidacao("O campo recusou deve ser verdadeiro ou falso");
+  }
+
   const recusou = dados.recusou === true;
 
   if (tipo === "fiscalizador") {
@@ -25,9 +31,15 @@ const montarAssinante = (dados) => {
 
   if (tipo === "denunciado") {
     const nome = textoOpcional(dados.assinante_nome);
+    const documento = textoOpcional(dados.assinante_documento);
     const email = textoOpcional(dados.assinante_email);
 
     if (!nome) throw erroValidacao("Informe o nome do responsável pelo estabelecimento");
+    if ([nome, documento, email].some((texto) => texto?.length > TAMANHO_MAXIMO_TEXTO)) {
+      throw erroValidacao(
+        `Nome, documento e e-mail do responsável devem ter no máximo ${TAMANHO_MAXIMO_TEXTO} caracteres`
+      );
+    }
     if (email && !EMAIL_VALIDO.test(email)) {
       throw erroValidacao("Informe um e-mail válido para o responsável");
     }
@@ -38,7 +50,7 @@ const montarAssinante = (dados) => {
     return {
       tipo,
       nome,
-      documento: textoOpcional(dados.assinante_documento),
+      documento,
       email,
       recusou,
       png: recusou ? null : validarImagemAssinatura(imagem),
