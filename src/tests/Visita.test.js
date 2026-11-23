@@ -63,13 +63,13 @@ describe("criar visita", () => {
     Visita.create.mockResolvedValue(visitaCriada);
     Visita.findByPk.mockResolvedValue({ id: 10, ...dadosVisita });
 
-    const resultado = await visitaService.criar(dadosVisita, [2, 3]);
+    const resultado = await visitaService.criar(dadosVisita, [2]);
 
     expect(Visita.create).toHaveBeenCalledWith(
       expect.objectContaining(dadosVisita),
       { transaction: transacao }
     );
-    expect(visitaCriada.setFiscalizadores).toHaveBeenCalledWith([2, 3], {
+    expect(visitaCriada.setFiscalizadores).toHaveBeenCalledWith([2], {
       transaction: transacao,
     });
     expect(transacao.commit).toHaveBeenCalledTimes(1);
@@ -91,7 +91,7 @@ describe("criar visita", () => {
     Visita.create.mockResolvedValue(criarVisitaFalsa(dadosVisita));
     Visita.findByPk.mockResolvedValue({ id: 10 });
 
-    await visitaService.criar({ ...dadosVisita, ...estabelecimento, campoInvalido: "x" });
+    await visitaService.criar({ ...dadosVisita, ...estabelecimento, campoInvalido: "x" }, [2]);
 
     const dadosSalvos = Visita.create.mock.calls[0][0];
     expect(dadosSalvos).toMatchObject(estabelecimento);
@@ -102,23 +102,24 @@ describe("criar visita", () => {
     Visita.create.mockResolvedValue(criarVisitaFalsa(dadosVisita));
     Visita.findByPk.mockResolvedValue({ id: 10 });
 
-    await visitaService.criar({ ...dadosVisita, nome_fantasia: "Mercado Bom Preço" });
+    await visitaService.criar({ ...dadosVisita, nome_fantasia: "Mercado Bom Preço" }, [2]);
 
     const dadosSalvos = Visita.create.mock.calls[0][0];
     expect(dadosSalvos.nome_fantasia).toBe("Mercado Bom Preço");
     expect(dadosSalvos).not.toHaveProperty("razao_social");
   });
 
-  it("não associa fiscalizadores quando a lista está vazia", async () => {
-    const visitaCriada = criarVisitaFalsa(dadosVisita);
-    Visita.create.mockResolvedValue(visitaCriada);
-    Visita.findByPk.mockResolvedValue({ id: 10 });
-
-    await visitaService.criar(dadosVisita);
-
-    expect(visitaCriada.setFiscalizadores).not.toHaveBeenCalled();
-    expect(transacao.commit).toHaveBeenCalledTimes(1);
-  });
+  it.each([[undefined], [[]], [5], [[2, 3]], [[2, 3, 4, 5]]])(
+    "rejeita visita sem exatamente um fiscalizador (%o), sem abrir transação",
+    async (ids) => {
+      await expect(visitaService.criar(dadosVisita, ids)).rejects.toMatchObject({
+        name: "ValidacaoError",
+        message: "A visita deve ter exatamente um agente fiscalizador",
+      });
+      expect(sequelize.transaction).not.toHaveBeenCalled();
+      expect(Visita.create).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ["denunciado", "O campo denunciado é obrigatório"],
@@ -133,22 +134,14 @@ describe("criar visita", () => {
     expect(Visita.create).not.toHaveBeenCalled();
   });
 
-  it("rejeita mais de 3 fiscalizadores sem abrir transação", async () => {
-    await expect(visitaService.criar(dadosVisita, [2, 3, 4, 5])).rejects.toMatchObject({
-      name: "ValidacaoError",
-      message: "Uma visita pode ter no máximo 3 agentes fiscalizadores",
-    });
-    expect(sequelize.transaction).not.toHaveBeenCalled();
-    expect(Visita.create).not.toHaveBeenCalled();
-  });
-
-  it("conta fiscalizadores repetidos uma vez só", async () => {
+  it("conta o fiscalizador repetido uma vez só", async () => {
     const visitaCriada = criarVisitaFalsa(dadosVisita);
     Visita.create.mockResolvedValue(visitaCriada);
     Visita.findByPk.mockResolvedValue({ id: 10 });
 
-    await visitaService.criar(dadosVisita, [2, 3, 4, 4]);
+    await visitaService.criar(dadosVisita, [2, 2]);
 
+    expect(visitaCriada.setFiscalizadores).toHaveBeenCalledWith([2], { transaction: transacao });
     expect(transacao.commit).toHaveBeenCalledTimes(1);
   });
 
@@ -306,10 +299,10 @@ describe("atualizar visita", () => {
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
   });
 
-  it("rejeita trocar para mais de 3 fiscalizadores sem abrir transação", async () => {
-    await expect(visitaService.atualizar(10, {}, [2, 3, 4, 5])).rejects.toMatchObject({
+  it.each([[[]], [[2, 3]]])("rejeita trocar para %o fiscalizadores sem abrir transação", async (ids) => {
+    await expect(visitaService.atualizar(10, {}, ids)).rejects.toMatchObject({
       name: "ValidacaoError",
-      message: "Uma visita pode ter no máximo 3 agentes fiscalizadores",
+      message: "A visita deve ter exatamente um agente fiscalizador",
     });
     expect(sequelize.transaction).not.toHaveBeenCalled();
     expect(Visita.findByPk).not.toHaveBeenCalled();

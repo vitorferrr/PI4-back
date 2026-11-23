@@ -20,7 +20,7 @@ const includeFiscalizadoresPadrao = {
   through: { attributes: [] },
 };
 
-const MAXIMO_FISCALIZADORES = 3;
+const QUANTIDADE_FISCALIZADORES = 1;
 
 const CAMPOS_ESTABELECIMENTO = [
   "razao_social",
@@ -38,11 +38,9 @@ const escolherCampos = (dados, campos) =>
     campos.filter((campo) => dados[campo] !== undefined).map((campo) => [campo, dados[campo]])
   );
 
-const validarQuantidadeFiscalizadores = (fiscalizadoresIds) => {
-  if (Array.isArray(fiscalizadoresIds) && new Set(fiscalizadoresIds).size > MAXIMO_FISCALIZADORES) {
-    throw erroValidacao(
-      `Uma visita pode ter no máximo ${MAXIMO_FISCALIZADORES} agentes fiscalizadores`
-    );
+const validarFiscalizadores = (fiscalizadoresIds) => {
+  if (!Array.isArray(fiscalizadoresIds) || new Set(fiscalizadoresIds).size !== QUANTIDADE_FISCALIZADORES) {
+    throw erroValidacao("A visita deve ter exatamente um agente fiscalizador");
   }
 };
 
@@ -70,7 +68,7 @@ const criar = async (dados, fiscalizadoresIds = []) => {
     throw erroValidacao("A data agendada é obrigatória");
   }
 
-  validarQuantidadeFiscalizadores(fiscalizadoresIds);
+  validarFiscalizadores(fiscalizadoresIds);
 
   const transaction = await sequelize.transaction();
 
@@ -90,9 +88,7 @@ const criar = async (dados, fiscalizadoresIds = []) => {
       { transaction }
     );
 
-    if (Array.isArray(fiscalizadoresIds) && fiscalizadoresIds.length > 0) {
-      await novaVisita.setFiscalizadores(fiscalizadoresIds, { transaction });
-    }
+    await novaVisita.setFiscalizadores([...new Set(fiscalizadoresIds)], { transaction });
 
     await transaction.commit();
 
@@ -164,7 +160,7 @@ const CAMPOS_EDITAVEIS = [
 ];
 
 const atualizar = async (id, dados, fiscalizadoresIds) => {
-  validarQuantidadeFiscalizadores(fiscalizadoresIds);
+  if (fiscalizadoresIds !== undefined) validarFiscalizadores(fiscalizadoresIds);
 
   const dadosAtualizados = escolherCampos(dados, CAMPOS_EDITAVEIS);
 
@@ -190,8 +186,8 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
 
     await visita.update(dadosAtualizados, { transaction });
 
-    if (Array.isArray(fiscalizadoresIds)) {
-      await visita.setFiscalizadores(fiscalizadoresIds, { transaction });
+    if (fiscalizadoresIds !== undefined) {
+      await visita.setFiscalizadores([...new Set(fiscalizadoresIds)], { transaction });
     }
 
     await transaction.commit();
