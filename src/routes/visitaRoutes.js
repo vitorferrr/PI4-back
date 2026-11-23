@@ -1,6 +1,7 @@
 import { Router } from "express";
 import visitaController from "../controllers/visitaController.js";
 import questionarioController from "../controllers/questionarioController.js";
+import documentoController from "../controllers/documentoController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 import validarId from "../middlewares/validarIdMiddleware.js";
@@ -59,6 +60,14 @@ router.post(
   validarId,
   validarRespostasQuestionario,
   questionarioController.salvarRespostas
+);
+
+router.post(
+  "/:id/documento",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  documentoController.gerar
 );
 
 export default router;
