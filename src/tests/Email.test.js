@@ -41,7 +41,9 @@ describe("enviar e-mail", () => {
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
+      requireTLS: false,
       auth: { user: "procon.projeto@gmail.com", pass: "senha-de-app-teste" },
+      dnsTimeout: 10_000,
       connectionTimeout: 10_000,
       greetingTimeout: 10_000,
       socketTimeout: 10_000,
@@ -68,7 +70,7 @@ describe("enviar e-mail", () => {
     await emailService.enviarEmail(emailBase);
 
     expect(nodemailer.createTransport).toHaveBeenCalledWith(
-      expect.objectContaining({ port: 587, secure: false })
+      expect.objectContaining({ port: 587, secure: false, requireTLS: true })
     );
     expect(transporte.sendMail).toHaveBeenCalledWith(
       expect.objectContaining({ from: "procon.projeto@gmail.com" })
@@ -113,6 +115,10 @@ describe("enviar e-mail", () => {
   it.each([
     [{ para: "sem-arroba" }, "Informe um e-mail de destino válido"],
     [{ para: undefined }, "Informe um e-mail de destino válido"],
+    [{ para: "a,b@loja.com" }, "Informe um e-mail de destino válido"],
+    [{ para: "a;b@loja.com" }, "Informe um e-mail de destino válido"],
+    [{ para: "x<outro@loja.com>" }, "Informe um e-mail de destino válido"],
+    [{ para: '"a"@loja.com' }, "Informe um e-mail de destino válido"],
     [{ assunto: "  " }, "O assunto do e-mail é obrigatório"],
     [{ texto: undefined }, "O e-mail precisa de conteúdo"],
     [{ anexos: [{ nome: "doc.pdf", conteudo: "texto" }] }, "Os anexos do e-mail são inválidos"],

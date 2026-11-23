@@ -156,6 +156,12 @@ describe("validações do modelo Usuario", () => {
     expect(UsuarioModelo.getAttributes().matricula.allowNull).toBe(true);
   });
 
+  it("limita a matrícula a 255 caracteres", async () => {
+    await expect(
+      UsuarioModelo.build({ ...dadosValidos, matricula: "1".repeat(256) }).validate()
+    ).rejects.toThrow("Matrícula deve ter no máximo 255 caracteres");
+  });
+
   it("deve exigir senha_hash", async () => {
     const { senha_hash, ...semSenha } = dadosValidos;
     await expect(UsuarioModelo.build(semSenha).validate()).rejects.toThrow();

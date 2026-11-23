@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import erroValidacao from "../utils/erroValidacao.js";
 
-const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_VALIDO = /^[^\s@<>,;:"()[\]\\]+@[^\s@<>,;:"()[\]\\]+\.[^\s@<>,;:"()[\]\\]+$/;
 const TEMPO_LIMITE_MS = 10_000;
 
 let transporteAtual;
@@ -45,7 +45,9 @@ const obterTransporte = (config) => {
       host: config.host,
       port: config.porta,
       secure: config.porta === 465,
+      requireTLS: config.porta !== 465,
       auth: { user: config.usuario, pass: config.senha },
+      dnsTimeout: TEMPO_LIMITE_MS,
       connectionTimeout: TEMPO_LIMITE_MS,
       greetingTimeout: TEMPO_LIMITE_MS,
       socketTimeout: TEMPO_LIMITE_MS,

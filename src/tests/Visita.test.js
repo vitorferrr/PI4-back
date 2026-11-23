@@ -546,6 +546,18 @@ describe("validações do modelo Visita", () => {
     }
   });
 
+  it.each(["razao_social", "nome_fantasia", "endereco", "bairro", "cep", "telefone", "cnpj_cpf", "atividade"])(
+    "limita %s a 255 caracteres",
+    async (campo) => {
+      await expect(
+        VisitaModelo.build({ ...dadosVisita, [campo]: "a".repeat(255) }).validate()
+      ).resolves.toBeDefined();
+      await expect(
+        VisitaModelo.build({ ...dadosVisita, [campo]: "a".repeat(256) }).validate()
+      ).rejects.toThrow("deve ter no máximo 255 caracteres");
+    }
+  );
+
   it("exige denunciado não vazio", async () => {
     await expect(
       VisitaModelo.build({ ...dadosVisita, denunciado: "" }).validate()

@@ -21,6 +21,12 @@ const getUsuarioModel = (sequelize, { DataTypes }) => {
       matricula: {
         type: DataTypes.STRING,
         allowNull: true,
+        validate: {
+          len: {
+            args: [0, 255],
+            msg: "Matrícula deve ter no máximo 255 caracteres",
+          },
+        },
       },
       senha_hash: {
         type: DataTypes.STRING,
