@@ -75,6 +75,40 @@ describe("inicialização na Vercel", () => {
   });
 });
 
+describe("corpo das requisições", () => {
+  const enviarCorpo = async (app, tamanho) => {
+    await new Promise((resolve) => {
+      servidor = app.listen(0, resolve);
+    });
+    return fetch(`http://127.0.0.1:${servidor.address().port}/documentos/1/assinaturas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imagem: "A".repeat(tamanho) }),
+    });
+  };
+
+  beforeEach(() => {
+    vi.stubEnv("VERCEL", "1");
+    sync.mockResolvedValue();
+  });
+
+  it("aceita o JSON de uma assinatura de 512 KiB em base64", async () => {
+    const app = await carregarApp();
+
+    const resposta = await enviarCorpo(app, 700 * 1024);
+
+    expect(resposta.status).toBe(401);
+  });
+
+  it("recusa corpo acima de 1 MB", async () => {
+    const app = await carregarApp();
+
+    const resposta = await enviarCorpo(app, 1100 * 1024);
+
+    expect(resposta.status).toBe(413);
+  });
+});
+
 describe("inicialização local", () => {
   it("encerra o processo com código 1 quando o banco está indisponível", async () => {
     vi.stubEnv("VERCEL", "");
