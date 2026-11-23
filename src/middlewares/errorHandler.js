@@ -28,14 +28,17 @@ const extrairErros = (erro) => {
   if (Array.isArray(erro.errors)) {
     return erro.errors.map((e) => e.message ?? String(e));
   }
-  return undefined;
+  return erro.message ? [erro.message] : undefined;
 };
 
-const errorHandler = (erro, req, res, next) => {
-  if (res.headersSent) {
-    return next(erro);
-  }
-
+export const tratarRespostaErro = (
+  res,
+  erro,
+  {
+    mensagemPadrao = "Erro interno do servidor",
+    mensagemReferenciaInvalida = MENSAGEM_REFERENCIA_INVALIDA,
+  } = {}
+) => {
   if (erro instanceof SyntaxError && erro.status === 400 && "body" in erro) {
     return responderErro(res, 400, "JSON inválido no corpo da requisição");
   }
@@ -61,31 +64,44 @@ const errorHandler = (erro, req, res, next) => {
     return responderErro(res, 403, erro.message || MENSAGEM_SEM_PERMISSAO);
   }
 
+  if (erro.name === "SequelizeUniqueConstraintError") {
+    return responderErro(res, 409, "Email já cadastrado");
+  }
+
   if (
     erro.name === "SequelizeValidationError" ||
-    erro.name === "SequelizeUniqueConstraintError" ||
     erro.name === "ValidacaoError"
   ) {
     return responderErro(
       res,
       400,
-      erro.message || "Dados inválidos",
+      mensagemPadrao !== "Erro interno do servidor"
+        ? mensagemPadrao
+        : erro.message || "Dados inválidos",
       extrairErros(erro)
     );
   }
 
   if (erro.name === "SequelizeForeignKeyConstraintError") {
-    return responderErro(res, 400, MENSAGEM_REFERENCIA_INVALIDA);
+    return responderErro(res, 400, mensagemReferenciaInvalida);
   }
 
   const status = erro.status || erro.statusCode;
   if (Number.isInteger(status) && status >= 400 && status < 500) {
-    return responderErro(res, status, erro.message, extrairErros(erro));
+    return responderErro(res, status, erro.message, erro.erros);
   }
 
   console.error(erro);
 
-  return responderErro(res, 500, "Erro interno do servidor");
+  return responderErro(res, 500, mensagemPadrao);
+};
+
+const errorHandler = (erro, req, res, next) => {
+  if (res.headersSent) {
+    return next(erro);
+  }
+
+  return tratarRespostaErro(res, erro);
 };
 
 export default errorHandler;

@@ -16,6 +16,8 @@ const exportar = async (req, res) => {
       status: req.query.status,
       gestor_id: req.query.gestor_id,
       fiscalizador_id: req.query.fiscalizador_id,
+      limit: req.query.limit,
+      offset: req.query.offset,
     };
 
     const csv = await adminService.exportarVisitasCsv(filtros);

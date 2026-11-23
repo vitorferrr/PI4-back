@@ -7,6 +7,7 @@ import validarId from "../middlewares/validarIdMiddleware.js";
 import {
   validarCriacaoVisita,
   validarListagemVisitas,
+  validarRespostasQuestionario,
 } from "../middlewares/validationMiddleware.js";
 
 const router = Router();
@@ -56,6 +57,7 @@ router.post(
   autenticar,
   autorizar("fiscalizador"),
   validarId,
+  validarRespostasQuestionario,
   questionarioController.salvarRespostas
 );
 

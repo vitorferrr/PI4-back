@@ -144,6 +144,22 @@ describe("validarCriacaoVisita", () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json.mock.calls[0][0].erros).toHaveLength(5);
   });
+
+  it("rejeita datas soltas como '1' ou '2024' que não seguem ISO 8601", () => {
+    for (const dataSolta of ["1", "2024"]) {
+      const res = criarRes();
+      const next = vi.fn();
+
+      validarCriacaoVisita(
+        { body: { denunciado: "Loja Central", data_agendada: dataSolta } },
+        res,
+        next
+      );
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+  });
 });
 
 describe("validarListagemVisitas", () => {
@@ -162,13 +178,21 @@ describe("validarListagemVisitas", () => {
     const next = vi.fn();
 
     validarListagemVisitas(
-      { query: { status: "inexistente", gestor_id: "abc" } },
+      {
+        query: {
+          status: "inexistente",
+          gestor_id: "abc",
+          limit: "0",
+          offset: "-1",
+        },
+      },
       res,
       next
     );
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].erros).toHaveLength(4);
   });
 });
 

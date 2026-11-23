@@ -8,6 +8,8 @@ const STATUS_VISITA_VALIDOS = [
   "cancelada",
 ];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ISO_DATE_REGEX =
+  /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 const ID_MAXIMO = 2147483647;
 
 const inteiroPositivo = (valor) =>
@@ -18,6 +20,11 @@ const inteiroPositivoQuery = (valor) =>
   /^[1-9]\d*$/.test(valor) &&
   Number(valor) <= ID_MAXIMO;
 
+const inteiroNaoNegativoQuery = (valor) =>
+  typeof valor === "string" &&
+  /^\d+$/.test(valor) &&
+  Number(valor) <= ID_MAXIMO;
+
 const textoPreenchido = (valor) =>
   typeof valor === "string" && valor.trim().length > 0;
 
@@ -25,7 +32,12 @@ const ehObjeto = (valor) =>
   Boolean(valor) && typeof valor === "object" && !Array.isArray(valor);
 
 const dataValida = (valor) => {
-  if (typeof valor !== "string" && !(valor instanceof Date)) return false;
+  if (valor instanceof Date) {
+    return !Number.isNaN(valor.getTime());
+  }
+  if (typeof valor !== "string" || !ISO_DATE_REGEX.test(valor)) {
+    return false;
+  }
   const data = new Date(valor);
   return !Number.isNaN(data.getTime());
 };
@@ -38,6 +50,36 @@ const finalizarValidacao = (res, next, erros) => {
     return responderErro(res, 400, "Dados inválidos", erros);
   }
   return next();
+};
+
+export const validarListaRespostas = (respostas) => {
+  if (!Array.isArray(respostas) || respostas.length === 0) {
+    return ["Envie ao menos uma resposta em 'respostas'"];
+  }
+
+  const erros = [];
+  const ids = new Set();
+
+  respostas.forEach((item, indice) => {
+    const posicao = `Resposta ${indice + 1}`;
+
+    if (!ehObjeto(item) || !inteiroPositivo(item.pergunta_id)) {
+      erros.push(`${posicao}: pergunta_id deve ser um número inteiro positivo`);
+      return;
+    }
+
+    if (!textoPreenchido(item.resposta)) {
+      erros.push(`${posicao}: a resposta deve ser um texto preenchido`);
+    }
+
+    if (ids.has(item.pergunta_id)) {
+      erros.push(`A pergunta ${item.pergunta_id} foi enviada mais de uma vez`);
+    }
+
+    ids.add(item.pergunta_id);
+  });
+
+  return erros;
 };
 
 export const validarCriacaoUsuario = (req, res, next) => {
@@ -127,7 +169,7 @@ export const validarCriacaoVisita = (req, res, next) => {
   }
 
   if (!dataValida(data_agendada)) {
-    erros.push("Informe uma data_agendada válida");
+    erros.push("Informe uma data_agendada válida no formato ISO 8601");
   }
 
   if (gestor_id !== undefined && !inteiroPositivo(gestor_id)) {
@@ -155,7 +197,8 @@ export const validarCriacaoVisita = (req, res, next) => {
 };
 
 export const validarListagemVisitas = (req, res, next) => {
-  const { status, gestor_id, fiscalizador_id } = req.query ?? {};
+  const { status, gestor_id, fiscalizador_id, limit, offset } =
+    req.query ?? {};
   const erros = [];
 
   if (status !== undefined && !STATUS_VISITA_VALIDOS.includes(status)) {
@@ -170,6 +213,14 @@ export const validarListagemVisitas = (req, res, next) => {
     erros.push("fiscalizador_id deve ser um número inteiro positivo");
   }
 
+  if (limit !== undefined && !inteiroPositivoQuery(limit)) {
+    erros.push("limit deve ser um número inteiro positivo");
+  }
+
+  if (offset !== undefined && !inteiroNaoNegativoQuery(offset)) {
+    erros.push("offset deve ser um número inteiro não negativo");
+  }
+
   return finalizarValidacao(res, next, erros);
 };
 
@@ -180,34 +231,6 @@ export const validarRespostasQuestionario = (req, res, next) => {
     ]);
   }
 
-  const { respostas } = req.body;
-  if (!Array.isArray(respostas) || respostas.length === 0) {
-    return responderErro(res, 400, "Dados inválidos", [
-      "Envie ao menos uma resposta em 'respostas'",
-    ]);
-  }
-
-  const erros = [];
-  const ids = new Set();
-
-  respostas.forEach((item, indice) => {
-    const posicao = `Resposta ${indice + 1}`;
-
-    if (!ehObjeto(item) || !inteiroPositivo(item.pergunta_id)) {
-      erros.push(`${posicao}: pergunta_id deve ser um número inteiro positivo`);
-      return;
-    }
-
-    if (!textoPreenchido(item.resposta)) {
-      erros.push(`${posicao}: a resposta deve ser um texto preenchido`);
-    }
-
-    if (ids.has(item.pergunta_id)) {
-      erros.push(`A pergunta ${item.pergunta_id} foi enviada mais de uma vez`);
-    }
-
-    ids.add(item.pergunta_id);
-  });
-
+  const erros = validarListaRespostas(req.body.respostas);
   return finalizarValidacao(res, next, erros);
 };

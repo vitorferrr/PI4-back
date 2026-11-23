@@ -1,4 +1,5 @@
 import models, { sequelize } from "../models/index.js";
+import { validarListaRespostas } from "../middlewares/validationMiddleware.js";
 
 const { PerguntaQuestionario, RespostaQuestionario, Visita } = models;
 
@@ -47,29 +48,10 @@ const listar = async () => {
 };
 
 const validarLista = (respostas) => {
-  if (!Array.isArray(respostas) || respostas.length === 0) {
-    throw erroValidacao("Envie ao menos uma resposta em 'respostas'");
+  const erros = validarListaRespostas(respostas);
+  if (erros.length > 0) {
+    throw erroValidacao(erros[0], erros);
   }
-
-  const ids = new Set();
-
-  respostas.forEach((item, indice) => {
-    const posicao = `Resposta ${indice + 1}`;
-
-    if (!Number.isInteger(item?.pergunta_id) || item.pergunta_id < 1) {
-      throw erroValidacao(`${posicao}: pergunta_id deve ser um número inteiro positivo`);
-    }
-
-    if (typeof item.resposta !== "string" || item.resposta.trim() === "") {
-      throw erroValidacao(`${posicao}: a resposta deve ser um texto preenchido`);
-    }
-
-    if (ids.has(item.pergunta_id)) {
-      throw erroValidacao(`A pergunta ${item.pergunta_id} foi enviada mais de uma vez`);
-    }
-
-    ids.add(item.pergunta_id);
-  });
 };
 
 const validarRespostas = async (respostas, transaction) => {

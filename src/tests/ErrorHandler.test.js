@@ -84,6 +84,17 @@ describe("errorHandler", () => {
     });
   });
 
+  it("retorna 409 para SequelizeUniqueConstraintError", () => {
+    const res = criarRes();
+
+    errorHandler({ name: "SequelizeUniqueConstraintError" }, {}, res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      mensagem: "Email já cadastrado",
+    });
+  });
+
   it("retorna 400 para SequelizeForeignKeyConstraintError", () => {
     const res = criarRes();
 

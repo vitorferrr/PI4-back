@@ -143,6 +143,8 @@ describe("GET /admin/exportar", () => {
       status: "concluida",
       gestor_id: "2",
       fiscalizador_id: "5",
+      limit: undefined,
+      offset: undefined,
     });
   });
 
