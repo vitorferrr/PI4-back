@@ -17,6 +17,11 @@ const getUsuarioModel = (sequelize, { DataTypes }) => {
           isEmail: true,
         },
       },
+      // Impressa no documento ao lado da assinatura do fiscal.
+      matricula: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       senha_hash: {
         type: DataTypes.STRING,
         allowNull: false,
