@@ -4,6 +4,13 @@ const MENSAGEM_REFERENCIA_INVALIDA =
 const MENSAGEM_SEM_PERMISSAO =
   "Usuário não possui permissão para acessar este recurso";
 
+const MENSAGEM_STORAGE_INDISPONIVEL =
+  "Serviço de armazenamento indisponível. Tente novamente mais tarde.";
+
+const ehStorageIndisponivel = (erro) =>
+  erro.name === "StorageConfiguracaoError" ||
+  (erro.name === "StorageError" && erro.codigo !== "STORAGE_PARAMETRO_INVALIDO");
+
 export const criarErroHttp = (status, mensagem, erros) => {
   const erro = new Error(mensagem);
   erro.status = status;
@@ -92,6 +99,10 @@ export const tratarRespostaErro = (
   }
 
   console.error(erro);
+
+  if (ehStorageIndisponivel(erro)) {
+    return responderErro(res, 503, MENSAGEM_STORAGE_INDISPONIVEL);
+  }
 
   return responderErro(res, 500, mensagemPadrao);
 };

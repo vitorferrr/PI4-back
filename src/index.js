@@ -7,13 +7,29 @@ import authRoutes from "./routes/authRoutes.js";
 import visitaRoutes from "./routes/visitaRoutes.js";
 import questionarioRoutes from "./routes/questionarioRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import documentoRoutes from "./routes/documentoRoutes.js";
 import errorHandler from "./middlewares/errorHandler.js";
 
 const app = express();
 
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+app.use((erro, req, res, next) => {
+  if (erro.type === "entity.too.large") {
+    return res.status(413).json({
+      mensagem: "O corpo da requisição deve ter no máximo 1 MB",
+    });
+  }
+
+  if (erro.type === "entity.parse.failed") {
+    return res.status(400).json({
+      mensagem: "JSON inválido no corpo da requisição",
+    });
+  }
+
+  return next(erro);
+});
 app.use(async (req, res, next) => {
   try {
     await ready;
@@ -30,6 +46,7 @@ app.use("/auth", authRoutes);
 app.use("/visitas", visitaRoutes);
 app.use("/questionario", questionarioRoutes);
 app.use("/admin", adminRoutes);
+app.use("/documentos", documentoRoutes);
 
 app.get("/", (req, res) => {
   return res.send("Servidor express executando...");
