@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
+import emailValido from "../utils/emailValido.js";
 import erroValidacao from "../utils/erroValidacao.js";
 
-const EMAIL_VALIDO = /^[^\s@<>,;:"()[\]\\]+@[^\s@<>,;:"()[\]\\]+\.[^\s@<>,;:"()[\]\\]+$/;
 const TEMPO_LIMITE_MS = 10_000;
 
 let transporteAtual;
@@ -13,8 +13,6 @@ const erroEmail = (codigo, mensagem) => {
   erro.codigo = codigo;
   return erro;
 };
-
-const emailValido = (valor) => typeof valor === "string" && EMAIL_VALIDO.test(valor);
 
 const lerConfiguracao = () => {
   const host = process.env.SMTP_HOST?.trim();
