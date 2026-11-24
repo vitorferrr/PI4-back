@@ -14,4 +14,12 @@ router.post(
   assinaturaController.registrar
 );
 
+router.post(
+  "/:id/finalizar",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  assinaturaController.finalizar
+);
+
 export default router;

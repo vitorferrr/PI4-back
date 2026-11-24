@@ -3,6 +3,14 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import documentoRoutes from "../routes/documentoRoutes.js";
 import assinaturaService from "../services/assinaturaService.js";
+import documentoService from "../services/documentoService.js";
+
+vi.mock("../services/documentoService.js", () => ({
+  default: {
+    gerar: vi.fn(),
+    finalizar: vi.fn(),
+  },
+}));
 
 vi.mock("../services/assinaturaService.js", () => ({
   default: {
@@ -48,9 +56,47 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+describe("POST /documentos/:id/finalizar", () => {
+  it("repete o fechamento conferindo o usuário do token", async () => {
+    const resultado = { situacao: "finalizado", documento_id: 7, pendentes: [], pdf_gerado: false, enviado_email: true };
+    documentoService.finalizar.mockResolvedValue(resultado);
+
+    const resposta = await requisitar("/documentos/7/finalizar");
+
+    expect(resposta.status).toBe(200);
+    expect(documentoService.finalizar).toHaveBeenCalledWith(7, {
+      reenviarEmail: true,
+      usuario: expect.objectContaining({ id: 5, role: "fiscalizador" }),
+    });
+    expect(await resposta.json()).toEqual(resultado);
+  });
+
+  it("responde 404 quando não há acesso ou o documento não existe", async () => {
+    documentoService.finalizar.mockResolvedValue(null);
+
+    expect((await requisitar("/documentos/7/finalizar")).status).toBe(404);
+  });
+
+  it("responde 403 para gestor", async () => {
+    expect((await requisitar("/documentos/7/finalizar", "gestor", 1)).status).toBe(403);
+    expect(documentoService.finalizar).not.toHaveBeenCalled();
+  });
+
+  it("responde 503 quando o Storage falha", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    documentoService.finalizar.mockRejectedValue(
+      Object.assign(new Error("x"), { name: "StorageError", codigo: "STORAGE_UPLOAD_FALHOU" })
+    );
+
+    expect((await requisitar("/documentos/7/finalizar")).status).toBe(503);
+    consoleError.mockRestore();
+  });
+});
+
 describe("POST /documentos/:id/assinaturas", () => {
   it("registra a assinatura em nome do usuário do token", async () => {
     assinaturaService.registrar.mockResolvedValue({ id: 1, documento_id: 7 });
+    documentoService.finalizar.mockResolvedValue({ situacao: "pendente", documento_id: 7, pendentes: ["x"] });
 
     const resposta = await requisitar("/documentos/7/assinaturas");
 
@@ -60,7 +106,24 @@ describe("POST /documentos/:id/assinaturas", () => {
       corpo,
       expect.objectContaining({ id: 5, role: "fiscalizador" })
     );
-    expect(await resposta.json()).toEqual({ id: 1, documento_id: 7 });
+    expect(documentoService.finalizar).toHaveBeenCalledWith(7);
+    expect(await resposta.json()).toEqual({
+      id: 1,
+      documento_id: 7,
+      finalizacao: { situacao: "pendente", documento_id: 7, pendentes: ["x"] },
+    });
+  });
+
+  it("mantém o 201 quando a finalização falha depois de salvar a assinatura", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    assinaturaService.registrar.mockResolvedValue({ id: 1, documento_id: 7 });
+    documentoService.finalizar.mockRejectedValue(new Error("Storage fora"));
+
+    const resposta = await requisitar("/documentos/7/assinaturas");
+
+    expect(resposta.status).toBe(201);
+    expect((await resposta.json()).finalizacao).toEqual({ situacao: "erro", documento_id: 7 });
+    consoleError.mockRestore();
   });
 
   it("responde 404 quando o documento não existe ou não é do fiscal", async () => {
