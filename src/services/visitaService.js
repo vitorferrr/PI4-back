@@ -292,13 +292,17 @@ const concluir = async (id) => {
     }
 
     const documento = await Documento.findOne({
-      attributes: ["id"],
+      attributes: ["id", "url_arquivo_pdf"],
       where: { visita_id: id },
       transaction,
     });
 
     if (!documento) {
       throw erroValidacao("Gere o documento da visita antes de concluí-la");
+    }
+
+    if (!documento.url_arquivo_pdf) {
+      throw erroValidacao("Colete todas as assinaturas e gere o PDF antes de concluir a visita");
     }
 
     await Visita.update({ status: "concluida" }, { where: { id }, transaction });

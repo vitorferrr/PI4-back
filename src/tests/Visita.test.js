@@ -477,7 +477,7 @@ describe("iniciar visita", () => {
 describe("concluir visita", () => {
   beforeEach(() => {
     Visita.findByPk.mockResolvedValueOnce({ id: 10, status: "em_andamento" });
-    Documento.findOne.mockResolvedValue({ id: 7 });
+    Documento.findOne.mockResolvedValue({ id: 7, url_arquivo_pdf: "visitas/10/documentos/a.pdf" });
   });
 
   it("trava a visita, confere o documento e conclui", async () => {
@@ -492,7 +492,7 @@ describe("concluir visita", () => {
       lock: transacao.LOCK.UPDATE,
     });
     expect(Documento.findOne).toHaveBeenCalledWith({
-      attributes: ["id"],
+      attributes: ["id", "url_arquivo_pdf"],
       where: { visita_id: 10 },
       transaction: transacao,
     });
@@ -510,6 +510,17 @@ describe("concluir visita", () => {
     await expect(visitaService.concluir(10)).rejects.toMatchObject({
       name: "ValidacaoError",
       message: "Gere o documento da visita antes de concluí-la",
+    });
+    expect(Visita.update).not.toHaveBeenCalled();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejeita concluir a visita antes de o PDF ser gerado", async () => {
+    Documento.findOne.mockResolvedValue({ id: 7, url_arquivo_pdf: null });
+
+    await expect(visitaService.concluir(10)).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Colete todas as assinaturas e gere o PDF antes de concluir a visita",
     });
     expect(Visita.update).not.toHaveBeenCalled();
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
