@@ -1,3 +1,5 @@
+import campoTextoOpcional from "../utils/campoTextoOpcional.js";
+
 const getUsuarioModel = (sequelize, { DataTypes }) => {
   const Usuario = sequelize.define(
     "usuario",
@@ -18,16 +20,7 @@ const getUsuarioModel = (sequelize, { DataTypes }) => {
         },
       },
       // Impressa no documento ao lado da assinatura do fiscal.
-      matricula: {
-        type: DataTypes.STRING,
-        allowNull: true,
-        validate: {
-          len: {
-            args: [0, 255],
-            msg: "Matrícula deve ter no máximo 255 caracteres",
-          },
-        },
-      },
+      ...campoTextoOpcional(DataTypes, "matricula", "Matrícula"),
       senha_hash: {
         type: DataTypes.STRING,
         allowNull: false,

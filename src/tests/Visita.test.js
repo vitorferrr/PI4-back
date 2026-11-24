@@ -20,7 +20,9 @@ vi.mock("../models/index.js", () => {
         findByPk: vi.fn(),
         update: vi.fn(),
       },
-      Usuario: {},
+      Usuario: {
+        findByPk: vi.fn(),
+      },
       Documento: {
         findOne: vi.fn(),
       },
@@ -29,7 +31,7 @@ vi.mock("../models/index.js", () => {
   };
 });
 
-const { Documento, Visita } = models;
+const { Documento, Usuario, Visita } = models;
 const { transacao } = sequelize;
 
 const sequelizeTeste = new Sequelize("postgres://teste:teste@localhost:5432/teste", {
@@ -55,6 +57,7 @@ const criarVisitaFalsa = (dados = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Usuario.findByPk.mockReset().mockImplementation(async (id) => ({ id, role: "fiscalizador" }));
 });
 
 describe("criar visita", () => {
@@ -132,6 +135,36 @@ describe("criar visita", () => {
     await expect(visitaService.criar(dados)).rejects.toThrow(mensagem);
     expect(sequelize.transaction).not.toHaveBeenCalled();
     expect(Visita.create).not.toHaveBeenCalled();
+  });
+
+  it("confere que o fiscalizador existe e tem o papel certo", async () => {
+    Visita.create.mockResolvedValue(criarVisitaFalsa(dadosVisita));
+    Visita.findByPk.mockResolvedValue({ id: 10 });
+
+    await visitaService.criar(dadosVisita, [2]);
+
+    expect(Usuario.findByPk).toHaveBeenCalledWith(2, { attributes: ["id", "role"] });
+  });
+
+  it.each([
+    ["gestor", { id: 3, role: "gestor" }],
+    ["admin", { id: 3, role: "admin" }],
+    ["inexistente", null],
+  ])("rejeita fiscalizador %s sem abrir transação", async (_, usuario) => {
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await expect(visitaService.criar(dadosVisita, [3])).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "O usuário informado não é um fiscalizador cadastrado",
+    });
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([["3"], [0], [-1]])("rejeita id de fiscalizador inválido (%o) sem consultar o banco", async (id) => {
+    await expect(visitaService.criar(dadosVisita, [id])).rejects.toThrow(
+      "O usuário informado não é um fiscalizador cadastrado"
+    );
+    expect(Usuario.findByPk).not.toHaveBeenCalled();
   });
 
   it("conta o fiscalizador repetido uma vez só", async () => {
@@ -274,6 +307,15 @@ describe("atualizar visita", () => {
       { cnpj_cpf: "12.345.678/0001-90", bairro: "Piedade" },
       { transaction: transacao }
     );
+  });
+
+  it("rejeita trocar para um usuário que não é fiscalizador", async () => {
+    Usuario.findByPk.mockResolvedValue({ id: 3, role: "gestor" });
+
+    await expect(visitaService.atualizar(10, {}, [3])).rejects.toThrow(
+      "O usuário informado não é um fiscalizador cadastrado"
+    );
+    expect(sequelize.transaction).not.toHaveBeenCalled();
   });
 
   it("não mexe nos fiscalizadores quando a lista não é enviada", async () => {
@@ -537,6 +579,14 @@ describe("validações do modelo Visita", () => {
     for (const campo of ["razao_social", "nome_fantasia", "endereco", "bairro", "cep", "telefone", "cnpj_cpf", "atividade"]) {
       expect(atributos[campo].allowNull).toBe(true);
     }
+  });
+
+  it("remove espaços das pontas e grava texto vazio como null", () => {
+    const visita = VisitaModelo.build({ ...dadosVisita, razao_social: "  Mercado LTDA  ", bairro: "   ", cep: "" });
+
+    expect(visita.razao_social).toBe("Mercado LTDA");
+    expect(visita.bairro).toBeNull();
+    expect(visita.cep).toBeNull();
   });
 
   it.each(["razao_social", "nome_fantasia", "endereco", "bairro", "cep", "telefone", "cnpj_cpf", "atividade"])(

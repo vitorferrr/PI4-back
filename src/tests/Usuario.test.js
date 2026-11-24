@@ -156,6 +156,11 @@ describe("validações do modelo Usuario", () => {
     expect(UsuarioModelo.getAttributes().matricula.allowNull).toBe(true);
   });
 
+  it("grava matrícula vazia como null e remove espaços das pontas", () => {
+    expect(UsuarioModelo.build({ ...dadosValidos, matricula: "   " }).matricula).toBeNull();
+    expect(UsuarioModelo.build({ ...dadosValidos, matricula: " 12345-6 " }).matricula).toBe("12345-6");
+  });
+
   it("limita a matrícula a 255 caracteres", async () => {
     await expect(
       UsuarioModelo.build({ ...dadosValidos, matricula: "1".repeat(256) }).validate()

@@ -14,6 +14,7 @@ const configurar = () => {
   vi.stubEnv("SMTP_PASS", "senha-de-app-teste");
   vi.stubEnv("EMAIL_REMETENTE", "PROCON Jaboatão <procon.projeto@gmail.com>");
   vi.stubEnv("EMAIL_DESTINO_TESTE", "");
+  vi.stubEnv("EMAIL_ENVIO_REAL", "true");
 };
 
 const emailBase = {
@@ -157,15 +158,45 @@ describe("enviar e-mail", () => {
     expect(nodemailer.createTransport).not.toHaveBeenCalled();
   });
 
-  it("esconde o erro do SMTP atrás de um erro genérico", async () => {
+  it("esconde o erro do SMTP e registra só os campos seguros", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     transporte.sendMail.mockRejectedValue(
-      new Error("535 Username and Password not accepted for procon.projeto@gmail.com")
+      Object.assign(new Error("535 Username and Password not accepted for procon.projeto@gmail.com"), {
+        code: "EAUTH",
+        responseCode: 535,
+        command: "AUTH PLAIN",
+      })
     );
 
     const erro = await emailService.enviarEmail(emailBase).catch((e) => e);
 
     expect(erro).toMatchObject({ name: "EmailError", codigo: "EMAIL_ENVIO_FALHOU" });
     expect(erro.message).not.toContain("procon.projeto");
+    expect(consoleError).toHaveBeenCalledWith("Falha no envio SMTP:", "EAUTH", 535, "AUTH PLAIN");
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("procon.projeto");
+    consoleError.mockRestore();
+  });
+
+  it.each([["", ""], ["", "false"], ["", "sim"]])(
+    "recusa enviar sem destino de teste nem envio real (%s / %s)",
+    async (destinoTeste, envioReal) => {
+      vi.stubEnv("EMAIL_DESTINO_TESTE", destinoTeste);
+      vi.stubEnv("EMAIL_ENVIO_REAL", envioReal);
+
+      await expect(emailService.enviarEmail(emailBase)).rejects.toMatchObject({
+        name: "EmailError",
+        codigo: "EMAIL_ENVIO_DESATIVADO",
+      });
+      expect(transporte.sendMail).not.toHaveBeenCalled();
+    }
+  );
+
+  it("usa o destino de teste mesmo com o envio real ligado", async () => {
+    vi.stubEnv("EMAIL_DESTINO_TESTE", "equipe@teste.com");
+
+    await emailService.enviarEmail(emailBase);
+
+    expect(transporte.sendMail).toHaveBeenCalledWith(expect.objectContaining({ to: "equipe@teste.com" }));
   });
 });
 

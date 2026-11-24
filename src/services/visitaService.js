@@ -38,9 +38,18 @@ const escolherCampos = (dados, campos) =>
     campos.filter((campo) => dados[campo] !== undefined).map((campo) => [campo, dados[campo]])
   );
 
-const validarFiscalizadores = (fiscalizadoresIds) => {
+const validarFiscalizadores = async (fiscalizadoresIds) => {
   if (!Array.isArray(fiscalizadoresIds) || new Set(fiscalizadoresIds).size !== QUANTIDADE_FISCALIZADORES) {
     throw erroValidacao("A visita deve ter exatamente um agente fiscalizador");
+  }
+
+  const [id] = fiscalizadoresIds;
+  const fiscal = Number.isInteger(id) && id > 0
+    ? await Usuario.findByPk(id, { attributes: ["id", "role"] })
+    : null;
+
+  if (fiscal?.role !== "fiscalizador") {
+    throw erroValidacao("O usuário informado não é um fiscalizador cadastrado");
   }
 };
 
@@ -68,7 +77,7 @@ const criar = async (dados, fiscalizadoresIds = []) => {
     throw erroValidacao("A data agendada é obrigatória");
   }
 
-  validarFiscalizadores(fiscalizadoresIds);
+  await validarFiscalizadores(fiscalizadoresIds);
 
   const transaction = await sequelize.transaction();
 
@@ -160,7 +169,7 @@ const CAMPOS_EDITAVEIS = [
 ];
 
 const atualizar = async (id, dados, fiscalizadoresIds) => {
-  if (fiscalizadoresIds !== undefined) validarFiscalizadores(fiscalizadoresIds);
+  if (fiscalizadoresIds !== undefined) await validarFiscalizadores(fiscalizadoresIds);
 
   const dadosAtualizados = escolherCampos(dados, CAMPOS_EDITAVEIS);
 

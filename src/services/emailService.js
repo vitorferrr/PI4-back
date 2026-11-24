@@ -23,6 +23,7 @@ const lerConfiguracao = () => {
   const senha = process.env.SMTP_PASS?.trim();
   const remetente = process.env.EMAIL_REMETENTE?.trim() || usuario;
   const destinoTeste = process.env.EMAIL_DESTINO_TESTE?.trim() || null;
+  const envioReal = process.env.EMAIL_ENVIO_REAL?.trim() === "true";
 
   if (
     !host || !Number.isInteger(porta) || porta < 1 || porta > 65535 ||
@@ -30,6 +31,13 @@ const lerConfiguracao = () => {
     (destinoTeste && !emailValido(destinoTeste))
   ) {
     throw erroEmail("EMAIL_CONFIGURACAO_INVALIDA", "Configuração de e-mail ausente ou inválida.");
+  }
+
+  if (!destinoTeste && !envioReal) {
+    throw erroEmail(
+      "EMAIL_ENVIO_DESATIVADO",
+      "Envio desativado: defina EMAIL_DESTINO_TESTE ou EMAIL_ENVIO_REAL=true."
+    );
   }
 
   return { host, porta, usuario, senha, remetente, destinoTeste };
@@ -98,7 +106,13 @@ export const enviarEmail = async ({ para, assunto, texto, html, anexos = [] } = 
       destinatario: enviarPara,
       redirecionado: Boolean(config.destinoTeste),
     };
-  } catch {
+  } catch (falha) {
+    console.error(
+      "Falha no envio SMTP:",
+      falha?.code ?? "sem código",
+      falha?.responseCode ?? "",
+      falha?.command ?? ""
+    );
     throw erroEmail("EMAIL_ENVIO_FALHOU", "Não foi possível enviar o e-mail.");
   }
 };
