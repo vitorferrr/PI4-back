@@ -1,6 +1,13 @@
 const MENSAGEM_REFERENCIA_INVALIDA =
   "Registro relacionado informado não existe no sistema.";
 
+const MENSAGEM_STORAGE_INDISPONIVEL =
+  "Serviço de armazenamento indisponível. Tente novamente mais tarde.";
+
+const ehStorageIndisponivel = (erro) =>
+  erro.name === "StorageConfiguracaoError" ||
+  (erro.name === "StorageError" && erro.codigo !== "STORAGE_PARAMETRO_INVALIDO");
+
 const tratarErro = (
   res,
   erro,
@@ -26,6 +33,12 @@ const tratarErro = (
   }
 
   console.error(erro);
+
+  if (ehStorageIndisponivel(erro)) {
+    return res.status(503).json({
+      mensagem: MENSAGEM_STORAGE_INDISPONIVEL,
+    });
+  }
 
   return res.status(500).json({
     mensagem,
