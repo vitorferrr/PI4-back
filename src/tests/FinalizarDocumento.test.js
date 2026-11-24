@@ -12,7 +12,7 @@ vi.mock("../models/index.js", () => {
     sequelize: { transaction: vi.fn(async () => transacao), transacao },
     default: {
       Assinatura: { findAll: vi.fn() },
-      Documento: { findByPk: vi.fn() },
+      Documento: { findByPk: vi.fn(), update: vi.fn() },
       PerguntaQuestionario: {},
       RespostaQuestionario: { findAll: vi.fn() },
       Visita: { findByPk: vi.fn(), update: vi.fn() },
@@ -35,16 +35,16 @@ imagem.data.fill(255);
 const png = PNG.sync.write(imagem);
 const arquivoPdf = { bucket: "documentos", path: "visitas/10/documentos/a.pdf" };
 
-const fiscais = [
-  { id: 5, nome: "Ana", matricula: "123" },
-  { id: 6, nome: "Bruno", matricula: null },
-];
-const assinaturaFiscal = (id) => ({
-  usuario_id: id,
+const fiscais = [{ id: 5, nome: "Ana", matricula: "123" }];
+const assinaturaFiscal = {
+  id: 1,
+  usuario_id: 5,
   assinante_tipo: "fiscalizador",
-  imagem_assinatura_url: `visitas/10/assinaturas/${id}.png`,
-});
+  assinante_nome: "Ana",
+  imagem_assinatura_url: "visitas/10/assinaturas/5.png",
+};
 const responsavel = {
+  id: 2,
   usuario_id: null,
   assinante_tipo: "denunciado",
   assinante_nome: "Carlos",
@@ -54,15 +54,27 @@ const responsavel = {
   imagem_assinatura_url: "visitas/10/assinaturas/r.png",
   data_assinatura: "2026-11-22T12:00:00Z",
 };
-const completas = () => [assinaturaFiscal(5), assinaturaFiscal(6), responsavel];
 
 let documento;
+let travado;
 let visita;
+
+const novoDocumento = (dados = {}) => ({
+  id: 7,
+  visita_id: 10,
+  url_arquivo_pdf: null,
+  enviado_email: false,
+  update: vi.fn(),
+  ...dados,
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
   delete transacao.finished;
-  documento = { id: 7, visita_id: 10, url_arquivo_pdf: null, enviado_email: false, update: vi.fn() };
+  transacao.rollback.mockReset();
+  transacao.commit.mockReset();
+  documento = novoDocumento();
+  travado = novoDocumento();
   visita = {
     id: 10,
     status: "em_andamento",
@@ -73,47 +85,47 @@ beforeEach(() => {
     observacoes_livres: "Obs",
     getFiscalizadores: vi.fn().mockResolvedValue(fiscais),
   };
-  Documento.findByPk.mockResolvedValue(documento);
-  Visita.findByPk.mockResolvedValue(visita);
-  Assinatura.findAll.mockResolvedValue(completas());
+  Documento.findByPk.mockReset().mockResolvedValueOnce(documento).mockResolvedValue(travado);
+  Documento.update.mockReset().mockResolvedValue([1]);
+  Visita.findByPk.mockReset().mockResolvedValue(visita);
+  Visita.update.mockReset().mockResolvedValue([1]);
+  Assinatura.findAll.mockReset().mockResolvedValue([assinaturaFiscal, responsavel]);
   RespostaQuestionario.findAll.mockResolvedValue([
     { resposta: "Sim", pergunta: { texto: "Preços afixados?" } },
   ]);
-  baixarArquivo.mockResolvedValue(png);
-  uploadArquivo.mockResolvedValue(arquivoPdf);
-  removerArquivo.mockResolvedValue();
-  enviarDocumentoVisita.mockResolvedValue({ redirecionado: false });
+  baixarArquivo.mockReset().mockResolvedValue(png);
+  uploadArquivo.mockReset().mockResolvedValue(arquivoPdf);
+  removerArquivo.mockReset().mockResolvedValue();
+  enviarDocumentoVisita.mockReset().mockResolvedValue({ redirecionado: false });
 });
 
 describe("finalizar documento", () => {
-  it("gera o PDF, salva, conclui a visita e envia o e-mail", async () => {
+  it("gera o PDF sem travas e grava numa transação curta", async () => {
     const resultado = await documentoService.finalizar(7);
 
-    expect(Documento.findByPk).toHaveBeenCalledWith(7, { transaction: transacao, lock: "UPDATE" });
-    expect(baixarArquivo).toHaveBeenCalledTimes(3);
-    expect(uploadArquivo).toHaveBeenCalledWith(
-      expect.objectContaining({ contentType: "application/pdf", diretorio: "visitas/10/documentos" })
+    expect(Documento.findByPk).toHaveBeenNthCalledWith(1, 7);
+    expect(Documento.findByPk).toHaveBeenNthCalledWith(2, 7, { transaction: transacao, lock: "UPDATE" });
+    expect(uploadArquivo.mock.invocationCallOrder[0]).toBeLessThan(
+      sequelize.transaction.mock.invocationCallOrder[0]
     );
     expect(uploadArquivo.mock.calls[0][0].conteudo.subarray(0, 5).toString()).toBe("%PDF-");
-    expect(documento.update).toHaveBeenCalledWith(
+    expect(Visita.update).toHaveBeenCalledWith(
+      { status: "concluida" },
+      { where: { id: 10, status: "em_andamento" }, transaction: transacao }
+    );
+    expect(travado.update).toHaveBeenCalledWith(
       expect.objectContaining({ url_arquivo_pdf: arquivoPdf.path }),
       { transaction: transacao }
     );
-    expect(Visita.update).toHaveBeenCalledWith(
-      { status: "concluida" },
-      { where: { id: 10 }, transaction: transacao }
-    );
     expect(transacao.commit).toHaveBeenCalledTimes(1);
-    expect(enviarDocumentoVisita).toHaveBeenCalledWith(
-      expect.objectContaining({ para: "carlos@loja.com", numero: 7, estabelecimento: "Bom Preço" })
-    );
-    expect(documento.update).toHaveBeenCalledWith({ enviado_email: true });
+    expect(enviarDocumentoVisita).not.toHaveBeenCalled();
     expect(resultado).toEqual({
       situacao: "finalizado",
       documento_id: 7,
       pendentes: [],
       pdf_gerado: true,
-      enviado_email: true,
+      enviado_email: false,
+      email_pendente: true,
     });
   });
 
@@ -133,122 +145,108 @@ describe("finalizar documento", () => {
     gerar.mockRestore();
   });
 
-  it("lista o que falta sem gerar PDF nem concluir", async () => {
-    Assinatura.findAll.mockResolvedValue([assinaturaFiscal(5)]);
+  it("lista o que falta sem gerar PDF nem abrir transação", async () => {
+    Assinatura.findAll.mockResolvedValue([assinaturaFiscal]);
 
     expect(await documentoService.finalizar(7)).toEqual({
       situacao: "pendente",
       documento_id: 7,
-      pendentes: ["Assinatura do fiscalizador Bruno", "Assinatura ou recusa do responsável"],
+      pendentes: ["Assinatura ou recusa do responsável"],
     });
     expect(uploadArquivo).not.toHaveBeenCalled();
-    expect(Visita.update).not.toHaveBeenCalled();
+    expect(sequelize.transaction).not.toHaveBeenCalled();
   });
 
   it("não finaliza visita sem fiscalizadores", async () => {
     visita.getFiscalizadores.mockResolvedValue([]);
     Assinatura.findAll.mockResolvedValue([responsavel]);
 
-    const resultado = await documentoService.finalizar(7);
-
-    expect(resultado.pendentes).toEqual(["Nenhum fiscalizador vinculado à visita"]);
+    expect((await documentoService.finalizar(7)).pendentes).toEqual([
+      "Nenhum fiscalizador vinculado à visita",
+    ]);
   });
 
   it("aceita a recusa do responsável sem baixar imagem dele", async () => {
     Assinatura.findAll.mockResolvedValue([
-      assinaturaFiscal(5),
-      assinaturaFiscal(6),
-      { ...responsavel, recusou: true, imagem_assinatura_url: null },
+      assinaturaFiscal,
+      { ...responsavel, recusou: true, imagem_assinatura_url: null, assinante_email: null },
     ]);
 
     const resultado = await documentoService.finalizar(7);
 
-    expect(baixarArquivo).toHaveBeenCalledTimes(2);
-    expect(resultado.situacao).toBe("finalizado");
+    expect(baixarArquivo).toHaveBeenCalledTimes(1);
+    expect(resultado).toMatchObject({ situacao: "finalizado", email_pendente: false });
   });
 
-  it("gera o PDF e não tenta enviar quando não há e-mail", async () => {
-    Assinatura.findAll.mockResolvedValue([
-      assinaturaFiscal(5),
-      assinaturaFiscal(6),
-      { ...responsavel, assinante_email: null },
-    ]);
-
-    const resultado = await documentoService.finalizar(7);
-
-    expect(enviarDocumentoVisita).not.toHaveBeenCalled();
-    expect(resultado).toMatchObject({ pdf_gerado: true, enviado_email: false });
-  });
-
-  it("mantém o PDF quando o e-mail falha", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    enviarDocumentoVisita.mockRejectedValue(
-      Object.assign(new Error("x"), { codigo: "EMAIL_ENVIO_FALHOU" })
-    );
-
-    const resultado = await documentoService.finalizar(7);
-
-    expect(resultado).toMatchObject({ situacao: "finalizado", enviado_email: false });
-    expect(transacao.rollback).not.toHaveBeenCalled();
-    expect(removerArquivo).not.toHaveBeenCalled();
-    consoleError.mockRestore();
-  });
-
-  it("não marca como enviado o e-mail desviado para teste", async () => {
-    enviarDocumentoVisita.mockResolvedValue({ redirecionado: true });
-
-    const resultado = await documentoService.finalizar(7);
-
-    expect(documento.update).not.toHaveBeenCalledWith({ enviado_email: true });
-    expect(resultado.enviado_email).toBe(false);
-  });
-
-  it("não gera nem envia de novo quando o PDF já existe", async () => {
-    documento.url_arquivo_pdf = arquivoPdf.path;
+  it("não gera de novo quando o PDF já existe", async () => {
+    Documento.findByPk.mockReset().mockResolvedValue(novoDocumento({ url_arquivo_pdf: arquivoPdf.path }));
 
     const resultado = await documentoService.finalizar(7);
 
     expect(uploadArquivo).not.toHaveBeenCalled();
-    expect(enviarDocumentoVisita).not.toHaveBeenCalled();
-    expect(resultado).toMatchObject({ situacao: "finalizado", pdf_gerado: false, enviado_email: false });
+    expect(resultado).toMatchObject({ situacao: "finalizado", pdf_gerado: false, email_pendente: true });
   });
 
-  it("reenvia o e-mail pendente baixando o PDF salvo", async () => {
-    documento.url_arquivo_pdf = arquivoPdf.path;
-    const pdf = Buffer.from("%PDF-salvo");
-    baixarArquivo.mockResolvedValue(pdf);
+  it("apaga o próprio PDF quando outro pedido gravou primeiro", async () => {
+    travado.url_arquivo_pdf = "visitas/10/documentos/outro.pdf";
 
-    const resultado = await documentoService.finalizar(7, { reenviarEmail: true });
+    const resultado = await documentoService.finalizar(7);
 
-    expect(baixarArquivo).toHaveBeenCalledWith(arquivoPdf);
-    expect(enviarDocumentoVisita).toHaveBeenCalledWith(expect.objectContaining({ pdf }));
-    expect(resultado.enviado_email).toBe(true);
-  });
-
-  it("não reenvia e-mail que já foi entregue", async () => {
-    Object.assign(documento, { url_arquivo_pdf: arquivoPdf.path, enviado_email: true });
-
-    const resultado = await documentoService.finalizar(7, { reenviarEmail: true });
-
-    expect(enviarDocumentoVisita).not.toHaveBeenCalled();
-    expect(resultado.enviado_email).toBe(true);
-  });
-
-  it("não gera PDF se uma assinatura baixada estiver corrompida", async () => {
-    baixarArquivo.mockResolvedValue(Buffer.from("nao-e-png"));
-
-    await expect(documentoService.finalizar(7)).rejects.toMatchObject({ name: "ValidacaoError" });
-    expect(uploadArquivo).not.toHaveBeenCalled();
+    expect(removerArquivo).toHaveBeenCalledWith(arquivoPdf);
     expect(Visita.update).not.toHaveBeenCalled();
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    expect(resultado.pdf_gerado).toBe(false);
   });
 
-  it("apaga o PDF enviado e não conclui quando a gravação falha", async () => {
-    documento.update.mockRejectedValue(new Error("falha no banco"));
+  it("não grava se as assinaturas mudaram durante a geração", async () => {
+    Assinatura.findAll
+      .mockResolvedValueOnce([assinaturaFiscal, responsavel])
+      .mockResolvedValueOnce([{ id: 1 }]);
+
+    await expect(documentoService.finalizar(7)).rejects.toThrow("As assinaturas mudaram");
+    expect(removerArquivo).toHaveBeenCalledWith(arquivoPdf);
+    expect(travado.update).not.toHaveBeenCalled();
+  });
+
+  it("não grava se a visita deixou de estar em andamento", async () => {
+    Visita.update.mockResolvedValue([0]);
+
+    await expect(documentoService.finalizar(7)).rejects.toThrow(
+      "Só é possível finalizar documentos de visitas em andamento"
+    );
+    expect(removerArquivo).toHaveBeenCalledWith(arquivoPdf);
+    expect(travado.update).not.toHaveBeenCalled();
+  });
+
+  it("aponta a assinatura ilegível sem enviar PDF", async () => {
+    baixarArquivo.mockResolvedValue(Buffer.from("nao-e-png"));
+
+    const erro = await documentoService.finalizar(7).catch((e) => e);
+
+    expect(erro).toMatchObject({ name: "ValidacaoError", assinatura_id: 1 });
+    expect(erro.message).toContain("do fiscalizador Ana");
+    expect(uploadArquivo).not.toHaveBeenCalled();
+  });
+
+  it("trata arquivo de assinatura sumido como assinatura a coletar de novo", async () => {
+    baixarArquivo.mockRejectedValue(Object.assign(new Error("x"), { name: "StorageError", codigo: "STORAGE_DOWNLOAD_FALHOU" }));
+
+    await expect(documentoService.finalizar(7)).rejects.toMatchObject({ assinatura_id: 1 });
+  });
+
+  it("repassa o Storage indisponível sem culpar a assinatura", async () => {
+    baixarArquivo.mockRejectedValue(
+      Object.assign(new Error("x"), { name: "StorageError", codigo: "STORAGE_BUCKET_INDISPONIVEL" })
+    );
+
+    await expect(documentoService.finalizar(7)).rejects.toMatchObject({ name: "StorageError" });
+  });
+
+  it("apaga o PDF e desfaz quando a gravação falha", async () => {
+    travado.update.mockRejectedValue(new Error("falha no banco"));
 
     await expect(documentoService.finalizar(7)).rejects.toThrow("falha no banco");
     expect(removerArquivo).toHaveBeenCalledWith(arquivoPdf);
-    expect(Visita.update).not.toHaveBeenCalled();
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
   });
 
@@ -261,10 +259,7 @@ describe("finalizar documento", () => {
   });
 
   it("retorna null para fiscal sem acesso, sem gerar o PDF", async () => {
-    const resultado = await documentoService.finalizar(7, { usuario: { id: 99, role: "fiscalizador" } });
-
-    expect(resultado).toBeNull();
-    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    expect(await documentoService.finalizar(7, { usuario: { id: 99, role: "fiscalizador" } })).toBeNull();
     expect(uploadArquivo).not.toHaveBeenCalled();
   });
 
@@ -275,10 +270,79 @@ describe("finalizar documento", () => {
   });
 
   it("retorna null quando o documento não existe", async () => {
-    Documento.findByPk.mockResolvedValue(null);
+    Documento.findByPk.mockReset().mockResolvedValue(null);
 
     expect(await documentoService.finalizar(99)).toBeNull();
-    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("enviar e-mail do documento", () => {
+  beforeEach(() => {
+    Documento.findByPk.mockReset().mockResolvedValue(novoDocumento({ url_arquivo_pdf: arquivoPdf.path }));
+  });
+
+  it("reserva o envio, baixa o PDF salvo e envia ao responsável", async () => {
+    expect(await documentoService.enviarEmail(7)).toBe(true);
+
+    expect(Documento.update).toHaveBeenCalledWith(
+      { enviado_email: true },
+      { where: { id: 7, enviado_email: false } }
+    );
+    expect(baixarArquivo).toHaveBeenCalledWith(arquivoPdf);
+    expect(enviarDocumentoVisita).toHaveBeenCalledWith(
+      expect.objectContaining({ para: "carlos@loja.com", numero: 7, estabelecimento: "Bom Preço", pdf: png })
+    );
+    expect(Documento.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("não envia se outro pedido já reservou o envio", async () => {
+    Documento.update.mockResolvedValue([0]);
+
+    expect(await documentoService.enviarEmail(7)).toBe(true);
+    expect(enviarDocumentoVisita).not.toHaveBeenCalled();
+  });
+
+  it("não envia o que já foi enviado", async () => {
+    Documento.findByPk.mockResolvedValue(novoDocumento({ url_arquivo_pdf: arquivoPdf.path, enviado_email: true }));
+
+    expect(await documentoService.enviarEmail(7)).toBe(true);
+    expect(Documento.update).not.toHaveBeenCalled();
+  });
+
+  it("não envia sem e-mail do responsável", async () => {
+    Assinatura.findAll.mockResolvedValue([assinaturaFiscal, { ...responsavel, assinante_email: null }]);
+
+    expect(await documentoService.enviarEmail(7)).toBe(false);
+    expect(Documento.update).not.toHaveBeenCalled();
+  });
+
+  it("não envia antes do PDF existir", async () => {
+    Documento.findByPk.mockResolvedValue(novoDocumento());
+
+    expect(await documentoService.enviarEmail(7)).toBe(false);
+  });
+
+  it("desfaz a reserva quando o envio falha e registra a causa", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    enviarDocumentoVisita.mockRejectedValue(
+      Object.assign(new Error("Não foi possível enviar o e-mail."), { codigo: "EMAIL_ENVIO_FALHOU" })
+    );
+
+    expect(await documentoService.enviarEmail(7)).toBe(false);
+    expect(Documento.update).toHaveBeenLastCalledWith({ enviado_email: false }, { where: { id: 7 } });
+    expect(consoleError).toHaveBeenCalledWith(
+      "Falha ao enviar o documento por e-mail:",
+      "EMAIL_ENVIO_FALHOU",
+      "Não foi possível enviar o e-mail."
+    );
+    consoleError.mockRestore();
+  });
+
+  it("não marca como enviado o e-mail desviado para teste", async () => {
+    enviarDocumentoVisita.mockResolvedValue({ redirecionado: true });
+
+    expect(await documentoService.enviarEmail(7)).toBe(false);
+    expect(Documento.update).toHaveBeenLastCalledWith({ enviado_email: false }, { where: { id: 7 } });
   });
 });
 

@@ -14,6 +14,14 @@ router.post(
   assinaturaController.registrar
 );
 
+router.delete(
+  "/:id/assinaturas/:assinaturaId",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  assinaturaController.remover
+);
+
 router.post(
   "/:id/finalizar",
   autenticar,

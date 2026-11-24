@@ -287,15 +287,20 @@ const concluir = async (id) => {
       return null;
     }
 
-    if (visita.status !== "em_andamento") {
-      throw erroValidacao("Somente visitas em andamento podem ser concluídas");
-    }
-
     const documento = await Documento.findOne({
       attributes: ["id", "url_arquivo_pdf"],
       where: { visita_id: id },
       transaction,
     });
+
+    if (visita.status === "concluida" && documento?.url_arquivo_pdf) {
+      await transaction.commit();
+      return await buscarPorId(id);
+    }
+
+    if (visita.status !== "em_andamento") {
+      throw erroValidacao("Somente visitas em andamento podem ser concluídas");
+    }
 
     if (!documento) {
       throw erroValidacao("Gere o documento da visita antes de concluí-la");

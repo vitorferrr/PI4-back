@@ -1,4 +1,5 @@
 import models, { sequelize } from "../models/index.js";
+import { getStorageContext } from "../config/supabase.js";
 import { podeAcessarVisita } from "../utils/acessoVisita.js";
 import emailValido from "../utils/emailValido.js";
 import erroValidacao from "../utils/erroValidacao.js";
@@ -192,6 +193,73 @@ const registrar = async (documentoId, dados, usuario) => {
   }
 };
 
+const remover = async (documentoId, assinaturaId, usuario) => {
+  const transaction = await sequelize.transaction();
+  let imagem = null;
+
+  try {
+    const documento = await Documento.findByPk(documentoId, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    const visita = documento
+      ? await Visita.findByPk(documento.visita_id, {
+          attributes: ["id", "status"],
+          include: [
+            { model: Usuario, as: "fiscalizadores", attributes: ["id"], through: { attributes: [] } },
+          ],
+          transaction,
+        })
+      : null;
+
+    if (!visita || !podeAcessarVisita(usuario, visita)) {
+      await transaction.rollback();
+      return null;
+    }
+
+    if (documento.url_arquivo_pdf) {
+      throw erroValidacao("O PDF do documento já foi gerado; a assinatura não pode ser removida");
+    }
+
+    if (visita.status !== "em_andamento") {
+      throw erroValidacao("Só é possível remover assinaturas de visitas em andamento");
+    }
+
+    const assinatura = await Assinatura.findOne({
+      where: { id: assinaturaId, documento_id: documento.id },
+      transaction,
+    });
+
+    if (!assinatura) {
+      await transaction.rollback();
+      return null;
+    }
+
+    imagem = assinatura.imagem_assinatura_url;
+    await assinatura.destroy({ transaction });
+    await transaction.commit();
+  } catch (erro) {
+    try {
+      if (!transaction.finished) await transaction.rollback();
+    } catch (erroRollback) {
+      console.error("Falha ao desfazer a remoção da assinatura:", erroRollback.message);
+    }
+
+    throw erro;
+  }
+
+  if (imagem) {
+    try {
+      await removerImagem({ bucket: getStorageContext().bucket, path: imagem });
+    } catch (erro) {
+      console.error("Falha ao remover imagem de assinatura órfã:", imagem, erro.message);
+    }
+  }
+
+  return true;
+};
+
 export default {
   registrar,
+  remover,
 };

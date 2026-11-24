@@ -526,20 +526,35 @@ describe("concluir visita", () => {
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["agendada", "concluida", "cancelada"])(
-    "rejeita visita com status %s",
-    async (status) => {
-      Visita.findByPk.mockReset();
-      Visita.findByPk.mockResolvedValue({ id: 10, status });
+  it.each([
+    ["agendada", { id: 7, url_arquivo_pdf: null }],
+    ["cancelada", null],
+    ["concluida", { id: 7, url_arquivo_pdf: null }],
+  ])("rejeita visita com status %s", async (status, documento) => {
+    Visita.findByPk.mockReset();
+    Visita.findByPk.mockResolvedValue({ id: 10, status });
+    Documento.findOne.mockResolvedValue(documento);
 
-      await expect(visitaService.concluir(10)).rejects.toMatchObject({
-        name: "ValidacaoError",
-        message: "Somente visitas em andamento podem ser concluídas",
-      });
-      expect(Documento.findOne).not.toHaveBeenCalled();
-      expect(transacao.rollback).toHaveBeenCalledTimes(1);
-    }
-  );
+    await expect(visitaService.concluir(10)).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Somente visitas em andamento podem ser concluídas",
+    });
+    expect(Visita.update).not.toHaveBeenCalled();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it("responde com a visita quando ela já foi concluída pela geração do PDF", async () => {
+    Visita.findByPk.mockReset();
+    Visita.findByPk
+      .mockResolvedValueOnce({ id: 10, status: "concluida" })
+      .mockResolvedValueOnce({ id: 10, status: "concluida" });
+
+    const resultado = await visitaService.concluir(10);
+
+    expect(resultado).toEqual({ id: 10, status: "concluida" });
+    expect(Visita.update).not.toHaveBeenCalled();
+    expect(transacao.commit).toHaveBeenCalledTimes(1);
+  });
 
   it("retorna null e desfaz a transação quando a visita não existe", async () => {
     Visita.findByPk.mockReset();
