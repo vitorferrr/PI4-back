@@ -342,6 +342,20 @@ describe("regras do documento", () => {
     consoleError.mockRestore();
   });
 
+  it("mantém o erro original quando o rollback também falha", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    Assinatura.create.mockRejectedValue(new Error("falha no banco"));
+    transacao.rollback.mockRejectedValue(new Error("conexão perdida"));
+
+    await expect(assinaturaService.registrar(7, assinaturaFiscal, usuario)).rejects.toThrow("falha no banco");
+    expect(consoleError).toHaveBeenCalledWith(
+      "Falha ao desfazer a transação da assinatura:",
+      "conexão perdida"
+    );
+    expect(removerArquivo).toHaveBeenCalledWith(arquivo);
+    consoleError.mockRestore();
+  });
+
   it("não grava a assinatura quando o upload falha", async () => {
     uploadArquivo.mockRejectedValue(new Error("Storage fora"));
 

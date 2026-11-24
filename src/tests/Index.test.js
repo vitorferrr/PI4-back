@@ -76,16 +76,18 @@ describe("inicialização na Vercel", () => {
 });
 
 describe("corpo das requisições", () => {
-  const enviarCorpo = async (app, tamanho) => {
+  const enviar = async (app, contentType, corpo) => {
     await new Promise((resolve) => {
       servidor = app.listen(0, resolve);
     });
     return fetch(`http://127.0.0.1:${servidor.address().port}/documentos/1/assinaturas`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imagem: "A".repeat(tamanho) }),
+      headers: { "Content-Type": contentType },
+      body: corpo,
     });
   };
+  const enviarCorpo = (app, tamanho) =>
+    enviar(app, "application/json", JSON.stringify({ imagem: "A".repeat(tamanho) }));
 
   beforeEach(() => {
     vi.stubEnv("VERCEL", "1");
@@ -109,6 +111,30 @@ describe("corpo das requisições", () => {
     expect(await resposta.json()).toEqual({
       mensagem: "O corpo da requisição deve ter no máximo 1 MB",
     });
+  });
+
+  it("recusa formulário acima de 1 MB em JSON", async () => {
+    const app = await carregarApp();
+
+    const resposta = await enviar(
+      app,
+      "application/x-www-form-urlencoded",
+      `imagem=${"A".repeat(1100 * 1024)}`
+    );
+
+    expect(resposta.status).toBe(413);
+    expect(await resposta.json()).toEqual({
+      mensagem: "O corpo da requisição deve ter no máximo 1 MB",
+    });
+  });
+
+  it("responde 400 em JSON quando o corpo está malformado", async () => {
+    const app = await carregarApp();
+
+    const resposta = await enviar(app, "application/json", '{"imagem":');
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({ mensagem: "JSON inválido no corpo da requisição" });
   });
 });
 

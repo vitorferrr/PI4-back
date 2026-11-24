@@ -183,10 +183,11 @@ const registrar = async (documentoId, dados, usuario) => {
   } catch (erro) {
     try {
       if (transaction && !transaction.finished) await transaction.rollback();
-    } finally {
-      await removerImagem(arquivo);
+    } catch (erroRollback) {
+      console.error("Falha ao desfazer a transação da assinatura:", erroRollback.message);
     }
 
+    await removerImagem(arquivo);
     throw erro;
   }
 };
