@@ -20,13 +20,36 @@ const includeFiscalizadoresPadrao = {
   through: { attributes: [] },
 };
 
-const MAXIMO_FISCALIZADORES = 3;
+const QUANTIDADE_FISCALIZADORES = 1;
 
-const validarQuantidadeFiscalizadores = (fiscalizadoresIds) => {
-  if (Array.isArray(fiscalizadoresIds) && new Set(fiscalizadoresIds).size > MAXIMO_FISCALIZADORES) {
-    throw erroValidacao(
-      `Uma visita pode ter no máximo ${MAXIMO_FISCALIZADORES} agentes fiscalizadores`
-    );
+const CAMPOS_ESTABELECIMENTO = [
+  "razao_social",
+  "nome_fantasia",
+  "endereco",
+  "bairro",
+  "cep",
+  "telefone",
+  "cnpj_cpf",
+  "atividade",
+];
+
+const escolherCampos = (dados, campos) =>
+  Object.fromEntries(
+    campos.filter((campo) => dados[campo] !== undefined).map((campo) => [campo, dados[campo]])
+  );
+
+const validarFiscalizadores = async (fiscalizadoresIds) => {
+  if (!Array.isArray(fiscalizadoresIds) || new Set(fiscalizadoresIds).size !== QUANTIDADE_FISCALIZADORES) {
+    throw erroValidacao("A visita deve ter exatamente um agente fiscalizador");
+  }
+
+  const [id] = fiscalizadoresIds;
+  const fiscal = Number.isInteger(id) && id > 0
+    ? await Usuario.findByPk(id, { attributes: ["id", "role"] })
+    : null;
+
+  if (fiscal?.role !== "fiscalizador") {
+    throw erroValidacao("O usuário informado não é um fiscalizador cadastrado");
   }
 };
 
@@ -54,7 +77,7 @@ const criar = async (dados, fiscalizadoresIds = []) => {
     throw erroValidacao("A data agendada é obrigatória");
   }
 
-  validarQuantidadeFiscalizadores(fiscalizadoresIds);
+  await validarFiscalizadores(fiscalizadoresIds);
 
   const transaction = await sequelize.transaction();
 
@@ -69,13 +92,12 @@ const criar = async (dados, fiscalizadoresIds = []) => {
         data_agendada,
         data_realizacao,
         observacoes_livres,
+        ...escolherCampos(dados, CAMPOS_ESTABELECIMENTO),
       },
       { transaction }
     );
 
-    if (Array.isArray(fiscalizadoresIds) && fiscalizadoresIds.length > 0) {
-      await novaVisita.setFiscalizadores(fiscalizadoresIds, { transaction });
-    }
+    await novaVisita.setFiscalizadores([...new Set(fiscalizadoresIds)], { transaction });
 
     await transaction.commit();
 
@@ -143,17 +165,13 @@ const CAMPOS_EDITAVEIS = [
   "data_agendada",
   "data_realizacao",
   "observacoes_livres",
+  ...CAMPOS_ESTABELECIMENTO,
 ];
 
 const atualizar = async (id, dados, fiscalizadoresIds) => {
-  validarQuantidadeFiscalizadores(fiscalizadoresIds);
+  if (fiscalizadoresIds !== undefined) await validarFiscalizadores(fiscalizadoresIds);
 
-  const dadosAtualizados = {};
-  CAMPOS_EDITAVEIS.forEach((campo) => {
-    if (dados[campo] !== undefined) {
-      dadosAtualizados[campo] = dados[campo];
-    }
-  });
+  const dadosAtualizados = escolherCampos(dados, CAMPOS_EDITAVEIS);
 
   const transaction = await sequelize.transaction();
 
@@ -177,8 +195,8 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
 
     await visita.update(dadosAtualizados, { transaction });
 
-    if (Array.isArray(fiscalizadoresIds)) {
-      await visita.setFiscalizadores(fiscalizadoresIds, { transaction });
+    if (fiscalizadoresIds !== undefined) {
+      await visita.setFiscalizadores([...new Set(fiscalizadoresIds)], { transaction });
     }
 
     await transaction.commit();

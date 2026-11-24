@@ -1,3 +1,5 @@
+import campoTextoOpcional from "../utils/campoTextoOpcional.js";
+
 const getVisitaModel = (sequelize, { DataTypes }) => {
   const Visita = sequelize.define(
     "visita",
@@ -56,6 +58,14 @@ const getVisitaModel = (sequelize, { DataTypes }) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      ...campoTextoOpcional(DataTypes, "razao_social", "Razão social"),
+      ...campoTextoOpcional(DataTypes, "nome_fantasia", "Nome fantasia"),
+      ...campoTextoOpcional(DataTypes, "endereco", "Endereço"),
+      ...campoTextoOpcional(DataTypes, "bairro", "Bairro"),
+      ...campoTextoOpcional(DataTypes, "cep", "CEP"),
+      ...campoTextoOpcional(DataTypes, "telefone", "Telefone"),
+      ...campoTextoOpcional(DataTypes, "cnpj_cpf", "CNPJ/CPF"),
+      ...campoTextoOpcional(DataTypes, "atividade", "Atividade"),
     },
     {
       tableName: "visitas",

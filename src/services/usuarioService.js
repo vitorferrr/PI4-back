@@ -17,7 +17,7 @@ const erroValidacao = (mensagem) => {
 };
 
 const criar = async (dados) => {
-  const { nome, email, senha, role } = dados;
+  const { nome, email, senha, role, matricula } = dados;
 
   if (!senha) {
     throw erroValidacao("A senha é obrigatória");
@@ -35,6 +35,7 @@ const criar = async (dados) => {
     email,
     senha_hash,
     role,
+    matricula,
   });
 
   return semSenha(usuario);
@@ -67,7 +68,7 @@ const atualizar = async (id, dados) => {
 
   const dadosAtualizados = {};
 
-  ["nome", "email", "role"].forEach((campo) => {
+  ["nome", "email", "role", "matricula"].forEach((campo) => {
     if (dados[campo] !== undefined) {
       dadosAtualizados[campo] = dados[campo];
     }

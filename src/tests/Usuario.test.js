@@ -77,6 +77,24 @@ describe("cadastro de usuário", () => {
     expect(resultado.senha_hash).toBeUndefined();
   });
 
+  it("grava a matrícula do fiscalizador", async () => {
+    Usuario.findOne.mockResolvedValue(null);
+    Usuario.create.mockImplementation(async (dadosCriacao) =>
+      criarUsuarioFalso(dadosCriacao)
+    );
+
+    const resultado = await usuarioService.criar({
+      nome: "Bia",
+      email: "bia@exemplo.com",
+      senha: "1234",
+      role: "fiscalizador",
+      matricula: "12345-6",
+    });
+
+    expect(Usuario.create.mock.calls[0][0].matricula).toBe("12345-6");
+    expect(resultado.matricula).toBe("12345-6");
+  });
+
   it("rejeita cadastro sem senha", async () => {
     await expect(
       usuarioService.criar({
@@ -131,6 +149,22 @@ describe("validações do modelo Usuario", () => {
     await expect(
       UsuarioModelo.build({ ...dadosValidos, email: "nao-e-email" }).validate()
     ).rejects.toThrow();
+  });
+
+  it("tem a matrícula como opcional", async () => {
+    await expect(UsuarioModelo.build(dadosValidos).validate()).resolves.toBeDefined();
+    expect(UsuarioModelo.getAttributes().matricula.allowNull).toBe(true);
+  });
+
+  it("grava matrícula vazia como null e remove espaços das pontas", () => {
+    expect(UsuarioModelo.build({ ...dadosValidos, matricula: "   " }).matricula).toBeNull();
+    expect(UsuarioModelo.build({ ...dadosValidos, matricula: " 12345-6 " }).matricula).toBe("12345-6");
+  });
+
+  it("limita a matrícula a 255 caracteres", async () => {
+    await expect(
+      UsuarioModelo.build({ ...dadosValidos, matricula: "1".repeat(256) }).validate()
+    ).rejects.toThrow("Matrícula deve ter no máximo 255 caracteres");
   });
 
   it("deve exigir senha_hash", async () => {
@@ -198,6 +232,15 @@ describe("atualizar usuário", () => {
     expect(usuario.update).toHaveBeenCalledWith({ nome: "Beatriz" });
     expect(resultado.nome).toBe("Beatriz");
     expect(resultado.senha_hash).toBeUndefined();
+  });
+
+  it("deve atualizar a matrícula", async () => {
+    const usuario = criarUsuarioFalso({ ...dadosValidos });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await usuarioService.atualizar(1, { matricula: "98765-4" });
+
+    expect(usuario.update).toHaveBeenCalledWith({ matricula: "98765-4" });
   });
 
   it("deve salvar a nova senha como hash", async () => {

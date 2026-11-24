@@ -1,3 +1,5 @@
+import campoTextoOpcional from "../utils/campoTextoOpcional.js";
+
 const getUsuarioModel = (sequelize, { DataTypes }) => {
   const Usuario = sequelize.define(
     "usuario",
@@ -17,6 +19,8 @@ const getUsuarioModel = (sequelize, { DataTypes }) => {
           isEmail: true,
         },
       },
+      // Impressa no documento ao lado da assinatura do fiscal.
+      ...campoTextoOpcional(DataTypes, "matricula", "Matrícula"),
       senha_hash: {
         type: DataTypes.STRING,
         allowNull: false,
