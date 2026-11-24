@@ -14,6 +14,29 @@ beforeEach(() => {
 });
 
 describe("tratarErro", () => {
+  it.each([
+    ["StorageError", "STORAGE_UPLOAD_FALHOU"],
+    ["StorageError", "STORAGE_BUCKET_NAO_PRIVADO"],
+    ["StorageConfiguracaoError", "STORAGE_CONFIGURACAO_INVALIDA"],
+  ])("retorna 503 para %s (%s)", (name, codigo) => {
+    const res = criarRes();
+
+    tratarErro(res, { name, codigo, message: "detalhe interno" }, "Erro ao salvar");
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith({
+      mensagem: "Serviço de armazenamento indisponível. Tente novamente mais tarde.",
+    });
+  });
+
+  it("mantém 500 para parâmetro inválido do Storage", () => {
+    const res = criarRes();
+
+    tratarErro(res, { name: "StorageError", codigo: "STORAGE_PARAMETRO_INVALIDO" }, "Erro ao salvar");
+
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+
   it("retorna 400 com lista de erros quando for SequelizeValidationError", () => {
     const res = criarRes();
     const erro = {
