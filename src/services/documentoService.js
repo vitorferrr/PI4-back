@@ -1,3 +1,4 @@
+import Sequelize from "sequelize";
 import models, { sequelize } from "../models/index.js";
 import { getStorageContext } from "../config/supabase.js";
 import { podeAcessarVisita } from "../utils/acessoVisita.js";
@@ -8,6 +9,15 @@ import pdfService from "./pdfService.js";
 import { baixarArquivo, removerArquivo, uploadArquivo } from "./storageService.js";
 
 const { Assinatura, Documento, PerguntaQuestionario, RespostaQuestionario, Visita } = models;
+const { Op } = Sequelize;
+
+const RESERVA_EMAIL_MS = 10 * 60 * 1000;
+
+export const ENVIO = Object.freeze({
+  ENVIADO: "enviado",
+  EM_ANDAMENTO: "em_andamento",
+  NAO_ENVIADO: "nao_enviado",
+});
 
 const buscarPerguntasSemResposta = async (visitaId, transaction) => {
   const perguntas = await PerguntaQuestionario.findAll({
@@ -97,13 +107,13 @@ const baixarAssinatura = async (assinatura) => {
   } catch (erro) {
     const storageIndisponivel =
       erro.name === "StorageConfiguracaoError" ||
-      (erro.name === "StorageError" && erro.codigo !== "STORAGE_DOWNLOAD_FALHOU");
+      (erro.name === "StorageError" && erro.codigo !== "STORAGE_ARQUIVO_NAO_ENCONTRADO");
 
     if (imagem === undefined && storageIndisponivel) throw erro;
 
     const falha = erroValidacao(
-      `Não foi possível ler a assinatura ${nomeDoAssinante(assinatura)}. ` +
-        "Tente finalizar de novo; se o erro continuar, apague essa assinatura e colete novamente."
+      `A assinatura ${nomeDoAssinante(assinatura)} não foi encontrada ou está ilegível. ` +
+        "Apague essa assinatura e colete novamente."
     );
     falha.assinatura_id = assinatura.id;
     throw falha;
@@ -279,23 +289,47 @@ const gerarPdfFinal = async (documentoId, usuario) => {
 const responsavelDoDocumento = (assinaturas) =>
   assinaturas.find((item) => item.assinante_tipo === "denunciado");
 
+const liberarReserva = async (documentoId, reservadoEm) => {
+  try {
+    await Documento.update(
+      { email_enviando_em: null },
+      { where: { id: documentoId, email_enviando_em: reservadoEm } }
+    );
+  } catch (erro) {
+    console.error("Falha ao liberar a reserva do e-mail:", documentoId, erro.message);
+  }
+};
+
 const enviarEmail = async (documentoId) => {
   const documento = await Documento.findByPk(documentoId);
 
-  if (!documento?.url_arquivo_pdf) return false;
-  if (documento.enviado_email) return true;
+  if (!documento?.url_arquivo_pdf) return ENVIO.NAO_ENVIADO;
+  if (documento.enviado_email) return ENVIO.ENVIADO;
 
   const assinaturas = await Assinatura.findAll({ where: { documento_id: documento.id } });
   const email = responsavelDoDocumento(assinaturas)?.assinante_email;
 
-  if (!email) return false;
+  if (!email) return ENVIO.NAO_ENVIADO;
 
-  const [marcados] = await Documento.update(
-    { enviado_email: true },
-    { where: { id: documento.id, enviado_email: false } }
+  const reservadoEm = new Date();
+  const [reservados] = await Documento.update(
+    { email_enviando_em: reservadoEm },
+    {
+      where: {
+        id: documento.id,
+        enviado_email: false,
+        [Op.or]: [
+          { email_enviando_em: null },
+          { email_enviando_em: { [Op.lt]: new Date(reservadoEm.getTime() - RESERVA_EMAIL_MS) } },
+        ],
+      },
+    }
   );
 
-  if (marcados !== 1) return true;
+  if (reservados !== 1) {
+    const atual = await Documento.findByPk(documento.id);
+    return atual?.enviado_email ? ENVIO.ENVIADO : ENVIO.EM_ANDAMENTO;
+  }
 
   let entregue = false;
 
@@ -315,10 +349,20 @@ const enviarEmail = async (documentoId) => {
   }
 
   if (!entregue) {
-    await Documento.update({ enviado_email: false }, { where: { id: documento.id } });
+    await liberarReserva(documento.id, reservadoEm);
+    return ENVIO.NAO_ENVIADO;
   }
 
-  return entregue;
+  try {
+    await Documento.update(
+      { enviado_email: true, email_enviando_em: null },
+      { where: { id: documento.id } }
+    );
+  } catch (erro) {
+    console.error("E-mail enviado, mas não foi possível registrar o envio:", documento.id, erro.message);
+  }
+
+  return ENVIO.ENVIADO;
 };
 
 const finalizar = async (documentoId, { usuario } = {}) => {

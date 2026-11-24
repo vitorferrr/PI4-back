@@ -238,6 +238,14 @@ const remover = async (documentoId, assinaturaId, usuario) => {
     imagem = assinatura.imagem_assinatura_url;
     await assinatura.destroy({ transaction });
     await transaction.commit();
+
+    console.info("Assinatura removida:", {
+      documento_id: documento.id,
+      assinatura_id: assinatura.id,
+      assinante_tipo: assinatura.assinante_tipo,
+      removida_por: usuario.id,
+      removida_em: new Date().toISOString(),
+    });
   } catch (erro) {
     try {
       if (!transaction.finished) await transaction.rollback();

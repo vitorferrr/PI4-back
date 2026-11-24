@@ -92,11 +92,22 @@ const finalizar = async (req, res) => {
     if (!resultado.situacao) return responderDocumentoNaoEncontrado(res);
 
     if (emailPendente) {
-      resultado.enviado_email = await documentoService.enviarEmail(resultado.documento_id);
+      const envio = await documentoService.enviarEmail(resultado.documento_id);
+
+      resultado.enviado_email = envio === "enviado";
+      if (envio === "em_andamento") resultado.envio_email = "em_andamento";
     }
 
     return res.status(200).json(resultado);
   } catch (erro) {
+    if (erro.assinatura_id) {
+      return res.status(400).json({
+        mensagem: "Erro ao finalizar documento",
+        erros: [erro.message],
+        assinatura_id: erro.assinatura_id,
+      });
+    }
+
     return tratarErro(res, erro, "Erro ao finalizar documento");
   }
 };

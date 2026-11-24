@@ -229,9 +229,26 @@ describe("finalizar documento", () => {
   });
 
   it("trata arquivo de assinatura sumido como assinatura a coletar de novo", async () => {
-    baixarArquivo.mockRejectedValue(Object.assign(new Error("x"), { name: "StorageError", codigo: "STORAGE_DOWNLOAD_FALHOU" }));
+    baixarArquivo.mockRejectedValue(
+      Object.assign(new Error("x"), { name: "StorageError", codigo: "STORAGE_ARQUIVO_NAO_ENCONTRADO" })
+    );
 
-    await expect(documentoService.finalizar(7)).rejects.toMatchObject({ assinatura_id: 1 });
+    await expect(documentoService.finalizar(7)).rejects.toMatchObject({
+      name: "ValidacaoError",
+      assinatura_id: 1,
+      message: expect.stringContaining("Apague essa assinatura"),
+    });
+  });
+
+  it("não culpa a assinatura por falha de rede no download", async () => {
+    baixarArquivo.mockRejectedValue(
+      Object.assign(new Error("x"), { name: "StorageError", codigo: "STORAGE_DOWNLOAD_FALHOU" })
+    );
+
+    const erro = await documentoService.finalizar(7).catch((falha) => falha);
+
+    expect(erro).toMatchObject({ name: "StorageError", codigo: "STORAGE_DOWNLOAD_FALHOU" });
+    expect(erro.assinatura_id).toBeUndefined();
   });
 
   it("repassa o Storage indisponível sem culpar a assinatura", async () => {
@@ -277,59 +294,96 @@ describe("finalizar documento", () => {
 });
 
 describe("enviar e-mail do documento", () => {
+  const reserva = () => Documento.update.mock.calls[0];
+
   beforeEach(() => {
     Documento.findByPk.mockReset().mockResolvedValue(novoDocumento({ url_arquivo_pdf: arquivoPdf.path }));
+    Documento.update.mockReset().mockResolvedValue([1]);
   });
 
-  it("reserva o envio, baixa o PDF salvo e envia ao responsável", async () => {
-    expect(await documentoService.enviarEmail(7)).toBe(true);
+  it("reserva o envio, envia ao responsável e só então marca como enviado", async () => {
+    expect(await documentoService.enviarEmail(7)).toBe("enviado");
 
-    expect(Documento.update).toHaveBeenCalledWith(
-      { enviado_email: true },
-      { where: { id: 7, enviado_email: false } }
-    );
+    const [dados, { where }] = reserva();
+    expect(dados).toEqual({ email_enviando_em: expect.any(Date) });
+    expect(where).toMatchObject({ id: 7, enviado_email: false });
     expect(baixarArquivo).toHaveBeenCalledWith(arquivoPdf);
     expect(enviarDocumentoVisita).toHaveBeenCalledWith(
       expect.objectContaining({ para: "carlos@loja.com", numero: 7, estabelecimento: "Bom Preço", pdf: png })
     );
-    expect(Documento.update).toHaveBeenCalledTimes(1);
+    expect(Documento.update).toHaveBeenLastCalledWith(
+      { enviado_email: true, email_enviando_em: null },
+      { where: { id: 7 } }
+    );
+    expect(Documento.update).toHaveBeenCalledTimes(2);
   });
 
-  it("não envia se outro pedido já reservou o envio", async () => {
-    Documento.update.mockResolvedValue([0]);
+  it("aceita reserva vazia ou vencida há mais de 10 minutos", async () => {
+    await documentoService.enviarEmail(7);
 
-    expect(await documentoService.enviarEmail(7)).toBe(true);
+    const [{ email_enviando_em: reservadoEm }, { where }] = reserva();
+    const condicoes = Object.getOwnPropertySymbols(where).map((simbolo) => where[simbolo])[0];
+    const limite = Object.getOwnPropertySymbols(condicoes[1].email_enviando_em)
+      .map((simbolo) => condicoes[1].email_enviando_em[simbolo])[0];
+
+    expect(condicoes[0]).toEqual({ email_enviando_em: null });
+    expect(reservadoEm.getTime() - limite.getTime()).toBe(10 * 60 * 1000);
+  });
+
+  it("responde em andamento se outro pedido está enviando", async () => {
+    Documento.update.mockResolvedValue([0]);
+    Documento.findByPk
+      .mockResolvedValueOnce(novoDocumento({ url_arquivo_pdf: arquivoPdf.path }))
+      .mockResolvedValueOnce(novoDocumento({ url_arquivo_pdf: arquivoPdf.path, email_enviando_em: new Date() }));
+
+    expect(await documentoService.enviarEmail(7)).toBe("em_andamento");
+    expect(enviarDocumentoVisita).not.toHaveBeenCalled();
+  });
+
+  it("responde enviado se outro pedido concluiu o envio", async () => {
+    Documento.update.mockResolvedValue([0]);
+    Documento.findByPk
+      .mockResolvedValueOnce(novoDocumento({ url_arquivo_pdf: arquivoPdf.path }))
+      .mockResolvedValueOnce(novoDocumento({ url_arquivo_pdf: arquivoPdf.path, enviado_email: true }));
+
+    expect(await documentoService.enviarEmail(7)).toBe("enviado");
     expect(enviarDocumentoVisita).not.toHaveBeenCalled();
   });
 
   it("não envia o que já foi enviado", async () => {
     Documento.findByPk.mockResolvedValue(novoDocumento({ url_arquivo_pdf: arquivoPdf.path, enviado_email: true }));
 
-    expect(await documentoService.enviarEmail(7)).toBe(true);
+    expect(await documentoService.enviarEmail(7)).toBe("enviado");
     expect(Documento.update).not.toHaveBeenCalled();
   });
 
   it("não envia sem e-mail do responsável", async () => {
     Assinatura.findAll.mockResolvedValue([assinaturaFiscal, { ...responsavel, assinante_email: null }]);
 
-    expect(await documentoService.enviarEmail(7)).toBe(false);
+    expect(await documentoService.enviarEmail(7)).toBe("nao_enviado");
     expect(Documento.update).not.toHaveBeenCalled();
   });
 
   it("não envia antes do PDF existir", async () => {
     Documento.findByPk.mockResolvedValue(novoDocumento());
 
-    expect(await documentoService.enviarEmail(7)).toBe(false);
+    expect(await documentoService.enviarEmail(7)).toBe("nao_enviado");
   });
 
-  it("desfaz a reserva quando o envio falha e registra a causa", async () => {
+  it("libera só a própria reserva quando o envio falha e registra a causa", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     enviarDocumentoVisita.mockRejectedValue(
       Object.assign(new Error("Não foi possível enviar o e-mail."), { codigo: "EMAIL_ENVIO_FALHOU" })
     );
 
-    expect(await documentoService.enviarEmail(7)).toBe(false);
-    expect(Documento.update).toHaveBeenLastCalledWith({ enviado_email: false }, { where: { id: 7 } });
+    expect(await documentoService.enviarEmail(7)).toBe("nao_enviado");
+
+    const reservadoEm = reserva()[0].email_enviando_em;
+    expect(Documento.update).toHaveBeenLastCalledWith(
+      { email_enviando_em: null },
+      { where: { id: 7, email_enviando_em: reservadoEm } }
+    );
+    expect(Documento.update).not.toHaveBeenCalledWith(expect.objectContaining({ enviado_email: true }), expect.anything());
     expect(consoleError).toHaveBeenCalledWith(
       "Falha ao enviar o documento por e-mail:",
       "EMAIL_ENVIO_FALHOU",
@@ -341,8 +395,34 @@ describe("enviar e-mail do documento", () => {
   it("não marca como enviado o e-mail desviado para teste", async () => {
     enviarDocumentoVisita.mockResolvedValue({ redirecionado: true });
 
-    expect(await documentoService.enviarEmail(7)).toBe(false);
-    expect(Documento.update).toHaveBeenLastCalledWith({ enviado_email: false }, { where: { id: 7 } });
+    expect(await documentoService.enviarEmail(7)).toBe("nao_enviado");
+    expect(Documento.update).toHaveBeenLastCalledWith(
+      { email_enviando_em: null },
+      expect.objectContaining({ where: expect.objectContaining({ id: 7 }) })
+    );
+  });
+
+  it("não quebra se liberar a reserva falhar; a reserva vence sozinha", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    enviarDocumentoVisita.mockRejectedValue(new Error("smtp"));
+    Documento.update.mockResolvedValueOnce([1]).mockRejectedValueOnce(new Error("banco fora"));
+
+    expect(await documentoService.enviarEmail(7)).toBe("nao_enviado");
+    expect(consoleError).toHaveBeenCalledWith("Falha ao liberar a reserva do e-mail:", 7, "banco fora");
+    consoleError.mockRestore();
+  });
+
+  it("responde enviado e registra no log se gravar o envio falhar", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    Documento.update.mockResolvedValueOnce([1]).mockRejectedValueOnce(new Error("banco fora"));
+
+    expect(await documentoService.enviarEmail(7)).toBe("enviado");
+    expect(consoleError).toHaveBeenCalledWith(
+      "E-mail enviado, mas não foi possível registrar o envio:",
+      7,
+      "banco fora"
+    );
+    consoleError.mockRestore();
   });
 });
 

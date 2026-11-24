@@ -27,6 +27,10 @@ const getDocumentoModel = (sequelize, { DataTypes }) => {
         allowNull: false,
         defaultValue: false,
       },
+      email_enviando_em: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
     },
     {
       tableName: "documentos",

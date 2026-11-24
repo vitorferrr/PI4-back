@@ -80,12 +80,44 @@ describe("POST /documentos/:id/finalizar", () => {
     documentoService.finalizar.mockResolvedValue({
       situacao: "finalizado", documento_id: 7, pendentes: [], pdf_gerado: false, enviado_email: false, email_pendente: true,
     });
-    documentoService.enviarEmail.mockResolvedValue(true);
+    documentoService.enviarEmail.mockResolvedValue("enviado");
+
+    const resposta = await requisitar("/documentos/7/finalizar");
+    const corpo = await resposta.json();
+
+    expect(documentoService.enviarEmail).toHaveBeenCalledWith(7);
+    expect(corpo.enviado_email).toBe(true);
+    expect(corpo.envio_email).toBeUndefined();
+  });
+
+  it("informa envio em andamento sem marcar como enviado", async () => {
+    documentoService.finalizar.mockResolvedValue({
+      situacao: "finalizado", documento_id: 7, pendentes: [], pdf_gerado: false, enviado_email: false, email_pendente: true,
+    });
+    documentoService.enviarEmail.mockResolvedValue("em_andamento");
+
+    const corpo = await (await requisitar("/documentos/7/finalizar")).json();
+
+    expect(corpo.enviado_email).toBe(false);
+    expect(corpo.envio_email).toBe("em_andamento");
+  });
+
+  it("devolve o assinatura_id quando a assinatura precisa ser coletada de novo", async () => {
+    documentoService.finalizar.mockRejectedValue(
+      Object.assign(new Error("A assinatura do responsável Carlos não foi encontrada ou está ilegível."), {
+        name: "ValidacaoError",
+        assinatura_id: 2,
+      })
+    );
 
     const resposta = await requisitar("/documentos/7/finalizar");
 
-    expect(documentoService.enviarEmail).toHaveBeenCalledWith(7);
-    expect((await resposta.json()).enviado_email).toBe(true);
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Erro ao finalizar documento",
+      erros: ["A assinatura do responsável Carlos não foi encontrada ou está ilegível."],
+      assinatura_id: 2,
+    });
   });
 
   it("responde 404 quando não há acesso ou o documento não existe", async () => {

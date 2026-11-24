@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Sequelize from "sequelize";
 import pg from "pg";
 import { PNG } from "pngjs";
@@ -374,6 +374,34 @@ describe("remover assinatura", () => {
     imagem_assinatura_url: "visitas/10/assinaturas/3.png",
     destroy: vi.fn(),
     ...dados,
+  });
+  let consoleInfo;
+
+  beforeEach(() => {
+    consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+  });
+
+  afterEach(() => consoleInfo.mockRestore());
+
+  it("registra no log quem removeu a assinatura", async () => {
+    Assinatura.findOne.mockResolvedValue(assinaturaSalva({ assinante_tipo: "denunciado" }));
+
+    await assinaturaService.remover(7, 3, usuario);
+
+    expect(consoleInfo).toHaveBeenCalledWith("Assinatura removida:", {
+      documento_id: 7,
+      assinatura_id: 3,
+      assinante_tipo: "denunciado",
+      removida_por: usuario.id,
+      removida_em: expect.any(String),
+    });
+  });
+
+  it("não registra remoção quando a assinatura não existe", async () => {
+    Assinatura.findOne.mockResolvedValue(null);
+
+    expect(await assinaturaService.remover(7, 3, usuario)).toBeNull();
+    expect(consoleInfo).not.toHaveBeenCalled();
   });
 
   it("apaga a assinatura com o documento travado e depois remove a imagem", async () => {
