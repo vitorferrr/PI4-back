@@ -20,7 +20,9 @@ vi.mock("../models/index.js", () => {
         findByPk: vi.fn(),
         update: vi.fn(),
       },
-      Usuario: {},
+      Usuario: {
+        findByPk: vi.fn(),
+      },
       Documento: {
         findOne: vi.fn(),
       },
@@ -29,7 +31,7 @@ vi.mock("../models/index.js", () => {
   };
 });
 
-const { Documento, Visita } = models;
+const { Documento, Usuario, Visita } = models;
 const { transacao } = sequelize;
 
 const sequelizeTeste = new Sequelize("postgres://teste:teste@localhost:5432/teste", {
@@ -55,6 +57,7 @@ const criarVisitaFalsa = (dados = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Usuario.findByPk.mockReset().mockImplementation(async (id) => ({ id, role: "fiscalizador" }));
 });
 
 describe("criar visita", () => {
@@ -63,13 +66,13 @@ describe("criar visita", () => {
     Visita.create.mockResolvedValue(visitaCriada);
     Visita.findByPk.mockResolvedValue({ id: 10, ...dadosVisita });
 
-    const resultado = await visitaService.criar(dadosVisita, [2, 3]);
+    const resultado = await visitaService.criar(dadosVisita, [2]);
 
     expect(Visita.create).toHaveBeenCalledWith(
       expect.objectContaining(dadosVisita),
       { transaction: transacao }
     );
-    expect(visitaCriada.setFiscalizadores).toHaveBeenCalledWith([2, 3], {
+    expect(visitaCriada.setFiscalizadores).toHaveBeenCalledWith([2], {
       transaction: transacao,
     });
     expect(transacao.commit).toHaveBeenCalledTimes(1);
@@ -77,16 +80,49 @@ describe("criar visita", () => {
     expect(resultado.id).toBe(10);
   });
 
-  it("não associa fiscalizadores quando a lista está vazia", async () => {
-    const visitaCriada = criarVisitaFalsa(dadosVisita);
-    Visita.create.mockResolvedValue(visitaCriada);
+  it("grava os dados do estabelecimento informados pelo gestor", async () => {
+    const estabelecimento = {
+      razao_social: "Bom Preço Comércio de Alimentos LTDA",
+      nome_fantasia: "Mercado Bom Preço",
+      endereco: "Av. Barreto de Menezes, 100",
+      bairro: "Prazeres",
+      cep: "54310-000",
+      telefone: "(81) 3333-4444",
+      cnpj_cpf: "12.345.678/0001-90",
+      atividade: "Supermercado",
+    };
+    Visita.create.mockResolvedValue(criarVisitaFalsa(dadosVisita));
     Visita.findByPk.mockResolvedValue({ id: 10 });
 
-    await visitaService.criar(dadosVisita);
+    await visitaService.criar({ ...dadosVisita, ...estabelecimento, campoInvalido: "x" }, [2]);
 
-    expect(visitaCriada.setFiscalizadores).not.toHaveBeenCalled();
-    expect(transacao.commit).toHaveBeenCalledTimes(1);
+    const dadosSalvos = Visita.create.mock.calls[0][0];
+    expect(dadosSalvos).toMatchObject(estabelecimento);
+    expect(dadosSalvos).not.toHaveProperty("campoInvalido");
   });
+
+  it("não envia ao banco campos do estabelecimento que não foram informados", async () => {
+    Visita.create.mockResolvedValue(criarVisitaFalsa(dadosVisita));
+    Visita.findByPk.mockResolvedValue({ id: 10 });
+
+    await visitaService.criar({ ...dadosVisita, nome_fantasia: "Mercado Bom Preço" }, [2]);
+
+    const dadosSalvos = Visita.create.mock.calls[0][0];
+    expect(dadosSalvos.nome_fantasia).toBe("Mercado Bom Preço");
+    expect(dadosSalvos).not.toHaveProperty("razao_social");
+  });
+
+  it.each([[undefined], [[]], [5], [[2, 3]], [[2, 3, 4, 5]]])(
+    "rejeita visita sem exatamente um fiscalizador (%o), sem abrir transação",
+    async (ids) => {
+      await expect(visitaService.criar(dadosVisita, ids)).rejects.toMatchObject({
+        name: "ValidacaoError",
+        message: "A visita deve ter exatamente um agente fiscalizador",
+      });
+      expect(sequelize.transaction).not.toHaveBeenCalled();
+      expect(Visita.create).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ["denunciado", "O campo denunciado é obrigatório"],
@@ -101,22 +137,44 @@ describe("criar visita", () => {
     expect(Visita.create).not.toHaveBeenCalled();
   });
 
-  it("rejeita mais de 3 fiscalizadores sem abrir transação", async () => {
-    await expect(visitaService.criar(dadosVisita, [2, 3, 4, 5])).rejects.toMatchObject({
-      name: "ValidacaoError",
-      message: "Uma visita pode ter no máximo 3 agentes fiscalizadores",
-    });
-    expect(sequelize.transaction).not.toHaveBeenCalled();
-    expect(Visita.create).not.toHaveBeenCalled();
+  it("confere que o fiscalizador existe e tem o papel certo", async () => {
+    Visita.create.mockResolvedValue(criarVisitaFalsa(dadosVisita));
+    Visita.findByPk.mockResolvedValue({ id: 10 });
+
+    await visitaService.criar(dadosVisita, [2]);
+
+    expect(Usuario.findByPk).toHaveBeenCalledWith(2, { attributes: ["id", "role"] });
   });
 
-  it("conta fiscalizadores repetidos uma vez só", async () => {
+  it.each([
+    ["gestor", { id: 3, role: "gestor" }],
+    ["admin", { id: 3, role: "admin" }],
+    ["inexistente", null],
+  ])("rejeita fiscalizador %s sem abrir transação", async (_, usuario) => {
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await expect(visitaService.criar(dadosVisita, [3])).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "O usuário informado não é um fiscalizador cadastrado",
+    });
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([["3"], [0], [-1]])("rejeita id de fiscalizador inválido (%o) sem consultar o banco", async (id) => {
+    await expect(visitaService.criar(dadosVisita, [id])).rejects.toThrow(
+      "O usuário informado não é um fiscalizador cadastrado"
+    );
+    expect(Usuario.findByPk).not.toHaveBeenCalled();
+  });
+
+  it("conta o fiscalizador repetido uma vez só", async () => {
     const visitaCriada = criarVisitaFalsa(dadosVisita);
     Visita.create.mockResolvedValue(visitaCriada);
     Visita.findByPk.mockResolvedValue({ id: 10 });
 
-    await visitaService.criar(dadosVisita, [2, 3, 4, 4]);
+    await visitaService.criar(dadosVisita, [2, 2]);
 
+    expect(visitaCriada.setFiscalizadores).toHaveBeenCalledWith([2], { transaction: transacao });
     expect(transacao.commit).toHaveBeenCalledTimes(1);
   });
 
@@ -239,6 +297,27 @@ describe("atualizar visita", () => {
     expect(resultado).toEqual({ id: 10 });
   });
 
+  it("permite corrigir os dados do estabelecimento antes do documento", async () => {
+    const visita = criarVisitaFalsa(dadosVisita);
+    Visita.findByPk.mockResolvedValueOnce(visita).mockResolvedValueOnce({ id: 10 });
+
+    await visitaService.atualizar(10, { cnpj_cpf: "12.345.678/0001-90", bairro: "Piedade" });
+
+    expect(visita.update).toHaveBeenCalledWith(
+      { cnpj_cpf: "12.345.678/0001-90", bairro: "Piedade" },
+      { transaction: transacao }
+    );
+  });
+
+  it("rejeita trocar para um usuário que não é fiscalizador", async () => {
+    Usuario.findByPk.mockResolvedValue({ id: 3, role: "gestor" });
+
+    await expect(visitaService.atualizar(10, {}, [3])).rejects.toThrow(
+      "O usuário informado não é um fiscalizador cadastrado"
+    );
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+  });
+
   it("não mexe nos fiscalizadores quando a lista não é enviada", async () => {
     const visita = criarVisitaFalsa(dadosVisita);
     Visita.findByPk.mockResolvedValueOnce(visita).mockResolvedValueOnce({ id: 10 });
@@ -262,10 +341,10 @@ describe("atualizar visita", () => {
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
   });
 
-  it("rejeita trocar para mais de 3 fiscalizadores sem abrir transação", async () => {
-    await expect(visitaService.atualizar(10, {}, [2, 3, 4, 5])).rejects.toMatchObject({
+  it.each([[[]], [[2, 3]]])("rejeita trocar para %o fiscalizadores sem abrir transação", async (ids) => {
+    await expect(visitaService.atualizar(10, {}, ids)).rejects.toMatchObject({
       name: "ValidacaoError",
-      message: "Uma visita pode ter no máximo 3 agentes fiscalizadores",
+      message: "A visita deve ter exatamente um agente fiscalizador",
     });
     expect(sequelize.transaction).not.toHaveBeenCalled();
     expect(Visita.findByPk).not.toHaveBeenCalled();
@@ -493,6 +572,34 @@ describe("validações do modelo Visita", () => {
     await expect(visita.validate()).resolves.toBeDefined();
     expect(visita.status).toBe("agendada");
   });
+
+  it("tem os dados do estabelecimento como opcionais", () => {
+    const atributos = VisitaModelo.getAttributes();
+
+    for (const campo of ["razao_social", "nome_fantasia", "endereco", "bairro", "cep", "telefone", "cnpj_cpf", "atividade"]) {
+      expect(atributos[campo].allowNull).toBe(true);
+    }
+  });
+
+  it("remove espaços das pontas e grava texto vazio como null", () => {
+    const visita = VisitaModelo.build({ ...dadosVisita, razao_social: "  Mercado LTDA  ", bairro: "   ", cep: "" });
+
+    expect(visita.razao_social).toBe("Mercado LTDA");
+    expect(visita.bairro).toBeNull();
+    expect(visita.cep).toBeNull();
+  });
+
+  it.each(["razao_social", "nome_fantasia", "endereco", "bairro", "cep", "telefone", "cnpj_cpf", "atividade"])(
+    "limita %s a 255 caracteres",
+    async (campo) => {
+      await expect(
+        VisitaModelo.build({ ...dadosVisita, [campo]: "a".repeat(255) }).validate()
+      ).resolves.toBeDefined();
+      await expect(
+        VisitaModelo.build({ ...dadosVisita, [campo]: "a".repeat(256) }).validate()
+      ).rejects.toThrow("deve ter no máximo 255 caracteres");
+    }
+  );
 
   it("exige denunciado não vazio", async () => {
     await expect(
