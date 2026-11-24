@@ -97,6 +97,10 @@ describe("adminService.exportarVisitasCsv", () => {
     expect(Visita.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { status: "concluida" },
+        order: [
+          ["data_agendada", "ASC"],
+          ["id", "ASC"],
+        ],
         distinct: true,
         limit: 100,
         offset: 10,

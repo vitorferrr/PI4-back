@@ -153,7 +153,10 @@ const buscarVisitasParaExportacao = async (filtros = {}) => {
         through: { attributes: [] },
       },
     ],
-    order: [["data_agendada", "ASC"]],
+    order: [
+      ["data_agendada", "ASC"],
+      ["id", "ASC"],
+    ],
     distinct: true,
     limit: limite,
     offset: deslocamento,
