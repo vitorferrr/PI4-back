@@ -20,10 +20,14 @@ const exportar = async (req, res) => {
       offset: req.query.offset,
     };
 
-    const csv = await adminService.exportarVisitasCsv(filtros);
+    const { csv, total, truncado } = await adminService.exportarVisitasCsv(
+      filtros
+    );
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", 'attachment; filename="visitas.csv"');
+    res.setHeader("X-Total-Count", String(total));
+    res.setHeader("X-Truncated", String(truncado));
 
     return res.status(200).send(csv);
   } catch (erro) {

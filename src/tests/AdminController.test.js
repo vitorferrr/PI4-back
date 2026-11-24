@@ -124,9 +124,13 @@ describe("GET /admin/dados-gerais", () => {
 });
 
 describe("GET /admin/exportar", () => {
-  it("retorna 200 com CSV e cabeçalhos de download para admin", async () => {
+  it("retorna 200 com CSV, cabeçalhos de download e metadados de total/truncamento para admin", async () => {
     const csvFalso = "id,denunciado\r\n1,Loja A";
-    adminService.exportarVisitasCsv.mockResolvedValue(csvFalso);
+    adminService.exportarVisitasCsv.mockResolvedValue({
+      csv: csvFalso,
+      total: 10,
+      truncado: true,
+    });
 
     const resposta = await requisitar(
       "/exportar?status=concluida&gestor_id=2&fiscalizador_id=5",
@@ -138,6 +142,8 @@ describe("GET /admin/exportar", () => {
     expect(resposta.headers.get("content-disposition")).toBe(
       'attachment; filename="visitas.csv"'
     );
+    expect(resposta.headers.get("x-total-count")).toBe("10");
+    expect(resposta.headers.get("x-truncated")).toBe("true");
     expect(await resposta.text()).toBe(csvFalso);
     expect(adminService.exportarVisitasCsv).toHaveBeenCalledWith({
       status: "concluida",

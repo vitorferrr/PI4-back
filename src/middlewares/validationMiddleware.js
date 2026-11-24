@@ -1,4 +1,5 @@
 import { responderErro } from "./errorHandler.js";
+import { validarListaRespostas } from "../utils/validarRespostas.js";
 
 const ROLES_VALIDAS = ["admin", "gestor", "fiscalizador"];
 const STATUS_VISITA_VALIDOS = [
@@ -9,7 +10,7 @@ const STATUS_VISITA_VALIDOS = [
 ];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ISO_DATE_REGEX =
-  /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+  /^(\d{4})-(\d{2})-(\d{2})(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 const ID_MAXIMO = 2147483647;
 
 const inteiroPositivo = (valor) =>
@@ -35,11 +36,30 @@ const dataValida = (valor) => {
   if (valor instanceof Date) {
     return !Number.isNaN(valor.getTime());
   }
-  if (typeof valor !== "string" || !ISO_DATE_REGEX.test(valor)) {
+  if (typeof valor !== "string") {
     return false;
   }
-  const data = new Date(valor);
-  return !Number.isNaN(data.getTime());
+
+  const partes = ISO_DATE_REGEX.exec(valor);
+  if (!partes) {
+    return false;
+  }
+
+  const [, anoStr, mesStr, diaStr] = partes;
+  const ano = Number(anoStr);
+  const mes = Number(mesStr);
+  const dia = Number(diaStr);
+
+  const dataUtc = new Date(Date.UTC(ano, mes - 1, dia));
+  if (
+    dataUtc.getUTCFullYear() !== ano ||
+    dataUtc.getUTCMonth() !== mes - 1 ||
+    dataUtc.getUTCDate() !== dia
+  ) {
+    return false;
+  }
+
+  return !Number.isNaN(new Date(valor).getTime());
 };
 
 const coordenadaValida = (valor, limite) =>
@@ -52,35 +72,7 @@ const finalizarValidacao = (res, next, erros) => {
   return next();
 };
 
-export const validarListaRespostas = (respostas) => {
-  if (!Array.isArray(respostas) || respostas.length === 0) {
-    return ["Envie ao menos uma resposta em 'respostas'"];
-  }
-
-  const erros = [];
-  const ids = new Set();
-
-  respostas.forEach((item, indice) => {
-    const posicao = `Resposta ${indice + 1}`;
-
-    if (!ehObjeto(item) || !inteiroPositivo(item.pergunta_id)) {
-      erros.push(`${posicao}: pergunta_id deve ser um número inteiro positivo`);
-      return;
-    }
-
-    if (!textoPreenchido(item.resposta)) {
-      erros.push(`${posicao}: a resposta deve ser um texto preenchido`);
-    }
-
-    if (ids.has(item.pergunta_id)) {
-      erros.push(`A pergunta ${item.pergunta_id} foi enviada mais de uma vez`);
-    }
-
-    ids.add(item.pergunta_id);
-  });
-
-  return erros;
-};
+export { validarListaRespostas };
 
 export const validarCriacaoUsuario = (req, res, next) => {
   if (!ehObjeto(req.body)) {

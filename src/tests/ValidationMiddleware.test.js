@@ -145,13 +145,13 @@ describe("validarCriacaoVisita", () => {
     expect(res.json.mock.calls[0][0].erros).toHaveLength(5);
   });
 
-  it("rejeita datas soltas como '1' ou '2024' que não seguem ISO 8601", () => {
-    for (const dataSolta of ["1", "2024"]) {
+  it("rejeita datas soltas ou inexistentes no calendário como '1', '2024' ou '2024-02-30'", () => {
+    for (const dataInvalida of ["1", "2024", "2024-02-30", "2023-02-29"]) {
       const res = criarRes();
       const next = vi.fn();
 
       validarCriacaoVisita(
-        { body: { denunciado: "Loja Central", data_agendada: dataSolta } },
+        { body: { denunciado: "Loja Central", data_agendada: dataInvalida } },
         res,
         next
       );

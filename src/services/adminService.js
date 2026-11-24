@@ -120,6 +120,9 @@ const buscarVisitasParaExportacao = async (filtros = {}) => {
   if (status) where.status = status;
   if (gestor_id) where.gestor_id = gestor_id;
 
+  const limite = normalizarLimite(limit);
+  const deslocamento = normalizarOffset(offset);
+
   if (fiscalizador_id) {
     const vinculos = await VisitaFiscalizador.findAll({
       where: { fiscalizador_id },
@@ -129,13 +132,13 @@ const buscarVisitasParaExportacao = async (filtros = {}) => {
 
     const visitaIds = vinculos.map((v) => v.visita_id);
     if (visitaIds.length === 0) {
-      return [];
+      return { rows: [], count: 0, limit: limite, offset: deslocamento };
     }
 
     where.id = { [Op.in]: visitaIds };
   }
 
-  return await Visita.findAll({
+  const { rows, count } = await Visita.findAndCountAll({
     where,
     include: [
       {
@@ -151,13 +154,18 @@ const buscarVisitasParaExportacao = async (filtros = {}) => {
       },
     ],
     order: [["data_agendada", "ASC"]],
-    limit: normalizarLimite(limit),
-    offset: normalizarOffset(offset),
+    distinct: true,
+    limit: limite,
+    offset: deslocamento,
   });
+
+  return { rows, count, limit: limite, offset: deslocamento };
 };
 
 const exportarVisitasCsv = async (filtros = {}) => {
-  const visitas = await buscarVisitasParaExportacao(filtros);
+  const { rows: visitas, count, offset } = await buscarVisitasParaExportacao(
+    filtros
+  );
 
   const linhas = visitas.map((visita) => {
     const fiscalizadores = (visita.fiscalizadores ?? [])
@@ -180,7 +188,11 @@ const exportarVisitasCsv = async (filtros = {}) => {
       .join(",");
   });
 
-  return `\uFEFF${[CABECALHO_CSV.join(","), ...linhas].join("\r\n")}`;
+  return {
+    csv: `\uFEFF${[CABECALHO_CSV.join(","), ...linhas].join("\r\n")}`,
+    total: count,
+    truncado: offset + visitas.length < count,
+  };
 };
 
 export default {

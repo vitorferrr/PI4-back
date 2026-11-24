@@ -4,7 +4,7 @@ import { Op } from "sequelize";
 const { Usuario, Visita, VisitaFiscalizador, Documento, Assinatura } =
   vi.hoisted(() => ({
     Usuario: { findAll: vi.fn() },
-    Visita: { findAll: vi.fn() },
+    Visita: { findAll: vi.fn(), findAndCountAll: vi.fn() },
     VisitaFiscalizador: { findAll: vi.fn() },
     Documento: { count: vi.fn() },
     Assinatura: { count: vi.fn() },
@@ -69,80 +69,97 @@ describe("adminService.obterDadosGerais", () => {
 });
 
 describe("adminService.exportarVisitasCsv", () => {
-  it("gera CSV com BOM, cabeçalho, campos escapados e neutraliza injeção de fórmulas", async () => {
-    Visita.findAll.mockResolvedValue([
-      {
-        id: 10,
-        denunciado: '=HYPERLINK("http://evil.com","Mercado")',
-        status: "concluida",
-        gestor: { nome: "Carlos" },
-        fiscalizadores: [{ nome: "Ana" }, { nome: "Bruno" }],
-        data_agendada: new Date("2026-12-01T10:00:00.000Z"),
-        data_realizacao: null,
-        latitude: "-23.55052000",
-        longitude: "-46.63330800",
-        observacoes_livres: "+SUM(A1:A2)\nLinha 2",
-      },
-    ]);
+  it("gera CSV com BOM, cabeçalho, campos escapados, metadados e neutraliza injeção de fórmulas", async () => {
+    Visita.findAndCountAll.mockResolvedValue({
+      count: 25,
+      rows: [
+        {
+          id: 10,
+          denunciado: '=HYPERLINK("http://evil.com","Mercado")',
+          status: "concluida",
+          gestor: { nome: "Carlos" },
+          fiscalizadores: [{ nome: "Ana" }, { nome: "Bruno" }],
+          data_agendada: new Date("2026-12-01T10:00:00.000Z"),
+          data_realizacao: null,
+          latitude: "-23.55052000",
+          longitude: "-46.63330800",
+          observacoes_livres: "+SUM(A1:A2)\nLinha 2",
+        },
+      ],
+    });
 
-    const csv = await adminService.exportarVisitasCsv({
+    const resultado = await adminService.exportarVisitasCsv({
       status: "concluida",
       limit: "100",
       offset: "10",
     });
 
-    expect(Visita.findAll).toHaveBeenCalledWith(
+    expect(Visita.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { status: "concluida" },
+        distinct: true,
         limit: 100,
         offset: 10,
       })
     );
-    expect(csv).toBe(
-      '\uFEFFid,denunciado,status,gestor,fiscalizadores,data_agendada,data_realizacao,latitude,longitude,observacoes_livres\r\n10,"\'=HYPERLINK(""http://evil.com"",""Mercado"")",concluida,Carlos,Ana; Bruno,2026-12-01T10:00:00.000Z,,-23.55052000,-46.63330800,"\'+SUM(A1:A2)\nLinha 2"'
-    );
+    expect(resultado).toEqual({
+      csv: '\uFEFFid,denunciado,status,gestor,fiscalizadores,data_agendada,data_realizacao,latitude,longitude,observacoes_livres\r\n10,"\'=HYPERLINK(""http://evil.com"",""Mercado"")",concluida,Carlos,Ana; Bruno,2026-12-01T10:00:00.000Z,,-23.55052000,-46.63330800,"\'+SUM(A1:A2)\nLinha 2"',
+      total: 25,
+      truncado: true,
+    });
   });
 
   it("preserva todos os fiscalizadores da visita ao filtrar por fiscalizador_id", async () => {
     VisitaFiscalizador.findAll.mockResolvedValue([{ visita_id: 10 }]);
-    Visita.findAll.mockResolvedValue([
-      {
-        id: 10,
-        denunciado: "Loja A",
-        status: "agendada",
-        gestor: { nome: "Carlos" },
-        fiscalizadores: [{ nome: "Ana" }, { nome: "Bruno" }],
-        data_agendada: new Date("2026-12-01T10:00:00.000Z"),
-        data_realizacao: null,
-        latitude: null,
-        longitude: null,
-        observacoes_livres: null,
-      },
-    ]);
+    Visita.findAndCountAll.mockResolvedValue({
+      count: 1,
+      rows: [
+        {
+          id: 10,
+          denunciado: "Loja A",
+          status: "agendada",
+          gestor: { nome: "Carlos" },
+          fiscalizadores: [{ nome: "Ana" }, { nome: "Bruno" }],
+          data_agendada: new Date("2026-12-01T10:00:00.000Z"),
+          data_realizacao: null,
+          latitude: null,
+          longitude: null,
+          observacoes_livres: null,
+        },
+      ],
+    });
 
-    const csv = await adminService.exportarVisitasCsv({ fiscalizador_id: "5" });
+    const resultado = await adminService.exportarVisitasCsv({
+      fiscalizador_id: "5",
+    });
 
     expect(VisitaFiscalizador.findAll).toHaveBeenCalledWith({
       where: { fiscalizador_id: "5" },
       attributes: ["visita_id"],
       raw: true,
     });
-    expect(Visita.findAll).toHaveBeenCalledWith(
+    expect(Visita.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: { [Op.in]: [10] } },
       })
     );
-    expect(csv).toContain("Ana; Bruno");
+    expect(resultado.csv).toContain("Ana; Bruno");
+    expect(resultado.total).toBe(1);
+    expect(resultado.truncado).toBe(false);
   });
 
   it("gera apenas o cabeçalho quando o fiscalizador não possui visitas", async () => {
     VisitaFiscalizador.findAll.mockResolvedValue([]);
 
-    const csv = await adminService.exportarVisitasCsv({ fiscalizador_id: "99" });
+    const resultado = await adminService.exportarVisitasCsv({
+      fiscalizador_id: "99",
+    });
 
-    expect(Visita.findAll).not.toHaveBeenCalled();
-    expect(csv).toBe(
-      "\uFEFFid,denunciado,status,gestor,fiscalizadores,data_agendada,data_realizacao,latitude,longitude,observacoes_livres"
-    );
+    expect(Visita.findAndCountAll).not.toHaveBeenCalled();
+    expect(resultado).toEqual({
+      csv: "\uFEFFid,denunciado,status,gestor,fiscalizadores,data_agendada,data_realizacao,latitude,longitude,observacoes_livres",
+      total: 0,
+      truncado: false,
+    });
   });
 });

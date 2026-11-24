@@ -84,14 +84,35 @@ describe("errorHandler", () => {
     });
   });
 
-  it("retorna 409 para SequelizeUniqueConstraintError", () => {
+  it("retorna 409 com 'Email já cadastrado' quando o erro único é de email", () => {
     const res = criarRes();
 
-    errorHandler({ name: "SequelizeUniqueConstraintError" }, {}, res, vi.fn());
+    errorHandler(
+      { name: "SequelizeUniqueConstraintError", fields: { email: "a@b.com" } },
+      {},
+      res,
+      vi.fn()
+    );
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith({
       mensagem: "Email já cadastrado",
+    });
+  });
+
+  it("retorna 409 com 'Registro duplicado' quando o erro único é de outra tabela", () => {
+    const res = criarRes();
+
+    errorHandler(
+      { name: "SequelizeUniqueConstraintError", fields: { visita_id: 10 } },
+      {},
+      res,
+      vi.fn()
+    );
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      mensagem: "Registro duplicado",
     });
   });
 
