@@ -1,21 +1,18 @@
 import jwt from "jsonwebtoken";
+import { responderErro } from "./errorHandler.js";
 
 const autenticar = (req, res, next) => {
   try {
     const authorization = req.headers.authorization;
 
     if (!authorization) {
-      return res.status(401).json({
-        mensagem: "Token não informado",
-      });
+      return responderErro(res, 401, "Token não informado");
     }
 
     const [tipo, token] = authorization.split(" ");
 
     if (tipo !== "Bearer" || !token) {
-      return res.status(401).json({
-        mensagem: "Token inválido",
-      });
+      return responderErro(res, 401, "Token inválido");
     }
 
     const payload = jwt.verify(token, process.env.JWT_SECRET);
@@ -26,9 +23,7 @@ const autenticar = (req, res, next) => {
   } catch (erro) {
     console.error(erro);
 
-    return res.status(401).json({
-      mensagem: "Token inválido ou expirado",
-    });
+    return responderErro(res, 401, "Token inválido ou expirado");
   }
 };
 
