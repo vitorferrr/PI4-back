@@ -3,6 +3,7 @@ import {
   validarAtualizacaoUsuario,
   validarCriacaoUsuario,
   validarCriacaoVisita,
+  validarListagemUsuarios,
   validarListagemVisitas,
   validarRespostasQuestionario,
 } from "../middlewares/validationMiddleware.js";
@@ -159,6 +160,26 @@ describe("validarCriacaoVisita", () => {
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(400);
     }
+  });
+});
+
+describe("validarListagemUsuarios", () => {
+  it.each([{}, { aprovado: "true" }, { aprovado: "false" }])("aceita %o", (query) => {
+    const next = vi.fn();
+
+    validarListagemUsuarios({ query }, criarRes(), next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([["sim"], ["1"], [["true", "false"]]])("rejeita aprovado = %o", (aprovado) => {
+    const res = criarRes();
+    const next = vi.fn();
+
+    validarListagemUsuarios({ query: { aprovado } }, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(next).not.toHaveBeenCalled();
   });
 });
 

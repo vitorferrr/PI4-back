@@ -13,6 +13,7 @@ vi.mock("../services/usuarioService.js", () => ({
     atualizar: vi.fn(),
     remover: vi.fn(),
     aprovar: vi.fn(),
+    reprovar: vi.fn(),
   },
 }));
 
@@ -64,6 +65,7 @@ const rotas = [
   ["PUT", "/1", "atualizar", ["admin"], ["gestor", "fiscalizador"]],
   ["DELETE", "/1", "remover", ["admin"], ["gestor", "fiscalizador"]],
   ["PATCH", "/1/aprovar", "aprovar", ["admin"], ["gestor", "fiscalizador"]],
+  ["PATCH", "/1/reprovar", "reprovar", ["admin"], ["gestor", "fiscalizador"]],
 ];
 
 describe.each(rotas)("%s /usuarios%s", (metodo, caminho, funcaoService, permitidos, bloqueados) => {
@@ -164,14 +166,73 @@ describe("GET /usuarios (respostas do controller)", () => {
   });
 
   it.each([
-    ["admin", true],
-    ["gestor", false],
-  ])("%s vê cadastros pendentes: %s", async (role, incluirPendentes) => {
+    ["admin", "", undefined],
+    ["admin", "?aprovado=false", false],
+    ["admin", "?aprovado=true", true],
+    ["gestor", "", true],
+    ["gestor", "?aprovado=true", true],
+  ])("%s com %s filtra aprovado = %s", async (role, query, aprovado) => {
     usuarioService.listar.mockResolvedValue([]);
 
-    await requisitar("GET", "", role);
+    const resposta = await requisitar("GET", query, role);
 
-    expect(usuarioService.listar).toHaveBeenCalledWith({ incluirPendentes });
+    expect(resposta.status).toBe(200);
+    expect(usuarioService.listar).toHaveBeenCalledWith({ aprovado });
+  });
+
+  it("gestor pedindo pendentes recebe lista vazia", async () => {
+    const resposta = await requisitar("GET", "?aprovado=false", "gestor");
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual([]);
+    expect(usuarioService.listar).not.toHaveBeenCalled();
+  });
+
+  it.each(["?aprovado=sim", "?aprovado=1", "?aprovado=FALSE"])(
+    "responde 400 para filtro inválido (%s)",
+    async (query) => {
+      const resposta = await requisitar("GET", query, "admin");
+
+      expect(resposta.status).toBe(400);
+      expect(await resposta.json()).toEqual({
+        mensagem: "Dados inválidos",
+        erros: ["aprovado deve ser true ou false"],
+      });
+      expect(usuarioService.listar).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe("PATCH /usuarios/:id/reprovar (respostas do controller)", () => {
+  it("responde 200 com o usuário reprovado", async () => {
+    const resposta = await requisitar("PATCH", "/1/reprovar", "admin");
+
+    expect(resposta.status).toBe(200);
+    expect(usuarioService.reprovar).toHaveBeenCalledWith("1");
+  });
+
+  it("responde 400 quando o usuário não é fiscalizador", async () => {
+    usuarioService.reprovar.mockRejectedValue(
+      Object.assign(new Error("Só cadastros de fiscalizador podem ser reprovados"), {
+        name: "ValidacaoError",
+      })
+    );
+
+    const resposta = await requisitar("PATCH", "/1/reprovar", "admin");
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Erro ao reprovar usuário",
+      erros: ["Só cadastros de fiscalizador podem ser reprovados"],
+    });
+  });
+
+  it("responde 404 quando o usuário não existe", async () => {
+    usuarioService.reprovar.mockResolvedValue(null);
+
+    const resposta = await requisitar("PATCH", "/99/reprovar", "admin");
+
+    expect(resposta.status).toBe(404);
   });
 });
 

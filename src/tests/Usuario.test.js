@@ -214,13 +214,13 @@ describe("listar usuários", () => {
     expect(resultado).toEqual(lista);
   });
 
-  it("pode esconder cadastros pendentes", async () => {
+  it.each([true, false])("filtra por aprovado = %s", async (aprovado) => {
     Usuario.findAll.mockResolvedValue([]);
 
-    await usuarioService.listar({ incluirPendentes: false });
+    await usuarioService.listar({ aprovado });
 
     expect(Usuario.findAll).toHaveBeenCalledWith({
-      where: { aprovado: true },
+      where: { aprovado },
       attributes: { exclude: ["senha_hash"] },
     });
   });
@@ -250,6 +250,45 @@ describe("aprovar usuário", () => {
     Usuario.findByPk.mockResolvedValue(null);
 
     expect(await usuarioService.aprovar(99)).toBeNull();
+  });
+});
+
+describe("reprovar usuário", () => {
+  it("bloqueia o fiscalizador sem apagar e devolve sem a senha", async () => {
+    const usuario = criarUsuarioFalso({ nome: "Ana", role: "fiscalizador", aprovado: true, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    const resultado = await usuarioService.reprovar(1);
+
+    expect(usuario.update).toHaveBeenCalledWith({ aprovado: false });
+    expect(usuario.destroy).not.toHaveBeenCalled();
+    expect(resultado).toEqual({ id: 1, nome: "Ana", role: "fiscalizador", aprovado: false });
+  });
+
+  it("não grava de novo quem já está reprovado", async () => {
+    const usuario = criarUsuarioFalso({ role: "fiscalizador", aprovado: false, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await usuarioService.reprovar(1);
+
+    expect(usuario.update).not.toHaveBeenCalled();
+  });
+
+  it.each(["admin", "gestor"])("não reprova %s", async (role) => {
+    const usuario = criarUsuarioFalso({ role, aprovado: true, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await expect(usuarioService.reprovar(1)).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Só cadastros de fiscalizador podem ser reprovados",
+    });
+    expect(usuario.update).not.toHaveBeenCalled();
+  });
+
+  it("devolve null quando o usuário não existe", async () => {
+    Usuario.findByPk.mockResolvedValue(null);
+
+    expect(await usuarioService.reprovar(99)).toBeNull();
   });
 });
 

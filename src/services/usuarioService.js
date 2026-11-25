@@ -46,9 +46,9 @@ const criar = async (dados) => {
   return semSenha(usuario);
 };
 
-const listar = async ({ incluirPendentes = true } = {}) => {
+const listar = async ({ aprovado } = {}) => {
   return await Usuario.findAll({
-    ...(!incluirPendentes && { where: { aprovado: true } }),
+    ...(aprovado !== undefined && { where: { aprovado } }),
     attributes: {
       exclude: ["senha_hash"],
     },
@@ -64,6 +64,24 @@ const aprovar = async (id) => {
 
   if (!usuario.aprovado) {
     await usuario.update({ aprovado: true });
+  }
+
+  return semSenha(usuario);
+};
+
+const reprovar = async (id) => {
+  const usuario = await Usuario.findByPk(id);
+
+  if (!usuario) {
+    return null;
+  }
+
+  if (usuario.role !== "fiscalizador") {
+    throw erroValidacao("Só cadastros de fiscalizador podem ser reprovados");
+  }
+
+  if (usuario.aprovado) {
+    await usuario.update({ aprovado: false });
   }
 
   return semSenha(usuario);
@@ -126,4 +144,5 @@ export default {
   atualizar,
   remover,
   aprovar,
+  reprovar,
 };
