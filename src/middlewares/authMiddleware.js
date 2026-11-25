@@ -1,8 +1,12 @@
 import jwt from "jsonwebtoken";
+import Sequelize from "sequelize";
 import { responderErro } from "./errorHandler.js";
 import authService from "../services/authService.js";
 
-const autenticar = async (req, res, next) => {
+const bancoIndisponivel = (erro) =>
+  erro instanceof Sequelize.ConnectionError || erro instanceof Sequelize.TimeoutError;
+
+const criarAutenticacao = ({ aoEncontrarSessaoEncerrada }) => async (req, res, next) => {
   const authorization = req.headers.authorization;
 
   if (!authorization) {
@@ -26,14 +30,20 @@ const autenticar = async (req, res, next) => {
   }
 
   if (payload.jti) {
-    try {
-      if (await authService.tokenRevogado(payload.jti)) {
-        return responderErro(res, 401, "Sessão encerrada");
-      }
-    } catch (erro) {
-      console.error("Falha ao conferir o token revogado:", erro.message);
+    let revogado;
 
-      return responderErro(res, 503, "Banco de dados indisponível");
+    try {
+      revogado = await authService.tokenRevogado(payload.jti);
+    } catch (erro) {
+      console.error("Falha ao conferir o token revogado:", erro);
+
+      return bancoIndisponivel(erro)
+        ? responderErro(res, 503, "Banco de dados indisponível")
+        : responderErro(res, 500, "Erro interno do servidor");
+    }
+
+    if (revogado) {
+      return aoEncontrarSessaoEncerrada(res);
     }
   }
 
@@ -41,5 +51,13 @@ const autenticar = async (req, res, next) => {
 
   return next();
 };
+
+const autenticar = criarAutenticacao({
+  aoEncontrarSessaoEncerrada: (res) => responderErro(res, 401, "Sessão encerrada"),
+});
+
+export const autenticarLogout = criarAutenticacao({
+  aoEncontrarSessaoEncerrada: (res) => res.status(204).send(),
+});
 
 export default autenticar;

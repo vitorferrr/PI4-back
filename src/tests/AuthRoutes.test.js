@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import express from "express";
 import jwt from "jsonwebtoken";
 import authRoutes from "../routes/authRoutes.js";
+import autenticar from "../middlewares/authMiddleware.js";
 import usuarioService from "../services/usuarioService.js";
 
 vi.mock("../models/index.js", () => {
@@ -55,6 +56,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use("/auth", authRoutes);
+  app.post("/auth/protegida", autenticar, (req, res) => res.status(200).json({ ok: true }));
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -186,15 +188,26 @@ describe("POST /auth/signup", () => {
 });
 
 describe("POST /auth/logout", () => {
-  it("encerra a sessão: o mesmo token passa a receber 401", async () => {
+  it("encerra a sessão: o mesmo token passa a receber 401 nas outras rotas", async () => {
     const token = novaSessao();
 
+    expect((await requisitar("/protegida", undefined, token)).status).toBe(200);
+
     const saida = await requisitar("/logout", undefined, token);
-    const repeticao = await requisitar("/logout", undefined, token);
+    const depois = await requisitar("/protegida", undefined, token);
 
     expect(saida.status).toBe(204);
-    expect(repeticao.status).toBe(401);
-    expect(await repeticao.json()).toEqual({ mensagem: "Sessão encerrada" });
+    expect(depois.status).toBe(401);
+    expect(await depois.json()).toEqual({ mensagem: "Sessão encerrada" });
+  });
+
+  it("repetir o logout com o mesmo token responde 204 de novo", async () => {
+    const token = novaSessao();
+
+    await requisitar("/logout", undefined, token);
+    const repeticao = await requisitar("/logout", undefined, token);
+
+    expect(repeticao.status).toBe(204);
   });
 
   it("não encerra outra sessão do mesmo usuário", async () => {
@@ -203,10 +216,13 @@ describe("POST /auth/logout", () => {
 
     await requisitar("/logout", undefined, primeira);
 
-    expect((await requisitar("/logout", undefined, segunda)).status).toBe(204);
+    expect((await requisitar("/protegida", undefined, segunda)).status).toBe(200);
   });
 
-  it("exige token", async () => {
-    expect((await requisitar("/logout")).status).toBe(401);
+  it.each([
+    ["sem token", undefined],
+    ["com token inválido", "abc"],
+  ])("responde 401 %s", async (_, token) => {
+    expect((await requisitar("/logout", undefined, token)).status).toBe(401);
   });
 });

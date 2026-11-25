@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import Sequelize from "sequelize";
 import models from "../models/index.js";
 import authService from "../services/authService.js";
 import authController from "../controllers/authController.js";
-import autenticar from "../middlewares/authMiddleware.js";
+import autenticar, { autenticarLogout } from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 
 vi.mock("../models/index.js", () => ({
@@ -220,8 +221,12 @@ describe("middleware autenticar com logout", () => {
     expect(TokenRevogado.findOne).not.toHaveBeenCalled();
   });
 
-  it("responde 503 quando não consegue consultar o banco", async () => {
-    TokenRevogado.findOne.mockRejectedValue(new Error("banco fora"));
+  it.each([
+    ["sem conexão", new Sequelize.ConnectionRefusedError(new Error("ECONNREFUSED"))],
+    ["com tempo esgotado", new Sequelize.ConnectionAcquireTimeoutError(new Error("timeout"))],
+    ["com consulta demorada", new Sequelize.TimeoutError(new Error("timeout"))],
+  ])("responde 503 quando o banco está %s", async (_, erro) => {
+    TokenRevogado.findOne.mockRejectedValue(erro);
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
     const res = criarRes();
     const next = vi.fn();
@@ -229,6 +234,35 @@ describe("middleware autenticar com logout", () => {
     await autenticar(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Banco de dados indisponível" });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("responde 500 e registra o erro quando a falha não é de conexão", async () => {
+    const erro = new TypeError("Cannot read properties of undefined (reading 'findOne')");
+    TokenRevogado.findOne.mockRejectedValue(erro);
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const res = criarRes();
+    const next = vi.fn();
+
+    await autenticar(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Erro interno do servidor" });
+    expect(console.error).toHaveBeenCalledWith("Falha ao conferir o token revogado:", erro);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("no logout, token já encerrado responde 204 sem passar adiante", async () => {
+    TokenRevogado.findOne.mockResolvedValue({ id: 1 });
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const res = criarRes();
+    res.send = vi.fn(() => res);
+    const next = vi.fn();
+
+    await autenticarLogout(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(204);
     expect(next).not.toHaveBeenCalled();
   });
 });
