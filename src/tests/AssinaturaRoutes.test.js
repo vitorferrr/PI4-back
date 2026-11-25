@@ -6,6 +6,7 @@ import assinaturaService from "../services/assinaturaService.js";
 import documentoService from "../services/documentoService.js";
 import { waitUntil } from "@vercel/functions";
 
+vi.mock("../services/authService.js", () => ({ default: { tokenRevogado: vi.fn(async () => false) } }));
 vi.mock("../services/documentoService.js", () => ({
   default: {
     gerar: vi.fn(),

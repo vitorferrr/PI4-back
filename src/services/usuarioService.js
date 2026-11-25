@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import models from "../models/index.js";
+import normalizarEmail from "../utils/normalizarEmail.js";
 
 const { Usuario } = models;
 
@@ -17,7 +18,8 @@ const erroValidacao = (mensagem) => {
 };
 
 const criar = async (dados) => {
-  const { nome, email, senha, role, matricula } = dados;
+  const { nome, senha, role, matricula, aprovado } = dados;
+  const email = normalizarEmail(dados.email);
 
   if (!senha) {
     throw erroValidacao("A senha é obrigatória");
@@ -25,7 +27,9 @@ const criar = async (dados) => {
 
    const existente = await Usuario.findOne({ where: { email } });
    if (existente) {
-      throw erroValidacao("Email já cadastrado");
+      const erro = erroValidacao("Email já cadastrado");
+      erro.codigo = "EMAIL_CADASTRADO";
+      throw erro;
     }
 
   const senha_hash = await bcrypt.hash(senha, 10);
@@ -36,17 +40,51 @@ const criar = async (dados) => {
     senha_hash,
     role,
     matricula,
+    ...(aprovado !== undefined && { aprovado }),
   });
 
   return semSenha(usuario);
 };
 
-const listar = async () => {
+const listar = async ({ aprovado } = {}) => {
   return await Usuario.findAll({
+    ...(aprovado !== undefined && { where: { aprovado } }),
     attributes: {
       exclude: ["senha_hash"],
     },
   });
+};
+
+const aprovar = async (id) => {
+  const usuario = await Usuario.findByPk(id);
+
+  if (!usuario) {
+    return null;
+  }
+
+  if (!usuario.aprovado) {
+    await usuario.update({ aprovado: true });
+  }
+
+  return semSenha(usuario);
+};
+
+const reprovar = async (id) => {
+  const usuario = await Usuario.findByPk(id);
+
+  if (!usuario) {
+    return null;
+  }
+
+  if (usuario.role !== "fiscalizador") {
+    throw erroValidacao("Só cadastros de fiscalizador podem ser reprovados");
+  }
+
+  if (usuario.aprovado) {
+    await usuario.update({ aprovado: false });
+  }
+
+  return semSenha(usuario);
 };
 
 const buscarPorId = async (id) => {
@@ -73,6 +111,10 @@ const atualizar = async (id, dados) => {
       dadosAtualizados[campo] = dados[campo];
     }
   });
+
+  if (dadosAtualizados.email !== undefined) {
+    dadosAtualizados.email = normalizarEmail(dadosAtualizados.email);
+  }
 
   if (dados.senha) {
     dadosAtualizados.senha_hash = await bcrypt.hash(dados.senha, 10);
@@ -101,4 +143,6 @@ export default {
   buscarPorId,
   atualizar,
   remover,
+  aprovar,
+  reprovar,
 };

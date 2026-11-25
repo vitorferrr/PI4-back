@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import Sequelize from "sequelize";
 import models from "../models/index.js";
 import authService from "../services/authService.js";
 import authController from "../controllers/authController.js";
-import autenticar from "../middlewares/authMiddleware.js";
+import autenticar, { autenticarLogout } from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 
 vi.mock("../models/index.js", () => ({
@@ -12,10 +13,15 @@ vi.mock("../models/index.js", () => ({
     Usuario: {
       findOne: vi.fn(),
     },
+    TokenRevogado: {
+      findOne: vi.fn(),
+      bulkCreate: vi.fn(),
+      destroy: vi.fn(),
+    },
   },
 }));
 
-const { Usuario } = models;
+const { TokenRevogado, Usuario } = models;
 const SEGREDO = "segredo-de-teste";
 
 const criarRes = () => {
@@ -52,6 +58,8 @@ describe("login (authService)", () => {
       where: { email: "bia@exemplo.com" },
     });
     expect(payload).toMatchObject({ id: 1, role: "gestor" });
+    expect(payload.jti).toMatch(/^[0-9a-f-]{36}$/);
+    expect(payload.exp - payload.iat).toBe(3600);
     expect(resultado.usuario).toEqual({
       id: 1,
       nome: "Bia",
@@ -59,6 +67,26 @@ describe("login (authService)", () => {
       role: "gestor",
     });
   });
+
+  it("procura o email sem espaços e em minúsculas", async () => {
+    Usuario.findOne.mockResolvedValue(null);
+
+    await expect(
+      authService.login({ email: "  Bia@Exemplo.COM ", senha: "1234" })
+    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+
+    expect(Usuario.findOne).toHaveBeenCalledWith({ where: { email: "bia@exemplo.com" } });
+  });
+
+  it.each([[123], [["bia@exemplo.com"]], ["   "]])(
+    "rejeita email que não é texto preenchido (%o) sem consultar o banco",
+    async (email) => {
+      await expect(authService.login({ email, senha: "1234" })).rejects.toMatchObject({
+        name: "AutenticacaoError",
+      });
+      expect(Usuario.findOne).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejeita quando email ou senha não são informados", async () => {
     await expect(authService.login({ email: "bia@exemplo.com" })).rejects.toThrow(
@@ -73,6 +101,34 @@ describe("login (authService)", () => {
 
     await expect(
       authService.login({ email: "x@exemplo.com", senha: "1234" })
+    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+  });
+
+  it("bloqueia o login de cadastro ainda não aprovado", async () => {
+    Usuario.findOne.mockResolvedValue({
+      id: 1,
+      role: "fiscalizador",
+      aprovado: false,
+      senha_hash: await bcrypt.hash("senha-forte", 10),
+    });
+
+    await expect(
+      authService.login({ email: "bia@exemplo.com", senha: "senha-forte" })
+    ).rejects.toMatchObject({
+      name: "CadastroPendenteError",
+      message: "Cadastro aguardando aprovação de um administrador",
+    });
+  });
+
+  it("não revela cadastro pendente para quem erra a senha", async () => {
+    Usuario.findOne.mockResolvedValue({
+      id: 1,
+      aprovado: false,
+      senha_hash: await bcrypt.hash("senha-forte", 10),
+    });
+
+    await expect(
+      authService.login({ email: "bia@exemplo.com", senha: "errada" })
     ).rejects.toMatchObject({ name: "AutenticacaoError" });
   });
 
@@ -143,6 +199,152 @@ describe("middleware autenticar", () => {
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe("middleware autenticar com logout", () => {
+  const requisicaoCom = (token) => ({ headers: { authorization: `Bearer ${token}` } });
+
+  it("recusa token encerrado pelo logout", async () => {
+    TokenRevogado.findOne.mockResolvedValue({ id: 1 });
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const res = criarRes();
+    const next = vi.fn();
+
+    await autenticar(requisicaoCom(token), res, next);
+
+    expect(TokenRevogado.findOne).toHaveBeenCalledWith({ attributes: ["id"], where: { jti: "abc" } });
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Sessão encerrada" });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("aceita token com id que não foi encerrado", async () => {
+    TokenRevogado.findOne.mockResolvedValue(null);
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const req = requisicaoCom(token);
+    const next = vi.fn();
+
+    await autenticar(req, criarRes(), next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.usuario).toMatchObject({ id: 1, jti: "abc" });
+  });
+
+  it("aceita token antigo, sem id, sem consultar o banco", async () => {
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO);
+    const next = vi.fn();
+
+    await autenticar(requisicaoCom(token), criarRes(), next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["sem conexão", new Sequelize.ConnectionRefusedError(new Error("ECONNREFUSED"))],
+    ["com tempo esgotado", new Sequelize.ConnectionAcquireTimeoutError(new Error("timeout"))],
+    ["com consulta demorada", new Sequelize.TimeoutError(new Error("timeout"))],
+  ])("responde 503 quando o banco está %s", async (_, erro) => {
+    TokenRevogado.findOne.mockRejectedValue(erro);
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const res = criarRes();
+    const next = vi.fn();
+
+    await autenticar(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Banco de dados indisponível" });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("responde 500 e registra o erro quando a falha não é de conexão", async () => {
+    const erro = new TypeError("Cannot read properties of undefined (reading 'findOne')");
+    TokenRevogado.findOne.mockRejectedValue(erro);
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const res = criarRes();
+    const next = vi.fn();
+
+    await autenticar(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Erro interno do servidor" });
+    expect(console.error).toHaveBeenCalledWith("Falha ao conferir o token revogado:", erro);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("no logout, token já encerrado responde 204 sem passar adiante", async () => {
+    TokenRevogado.findOne.mockResolvedValue({ id: 1 });
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const res = criarRes();
+    res.send = vi.fn(() => res);
+    const next = vi.fn();
+
+    await autenticarLogout(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(204);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("no logout, token vencido pelo tempo responde 204 sem consultar o banco", async () => {
+    const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, SEGREDO, {
+      jwtid: "abc",
+    });
+    const res = criarRes();
+    res.send = vi.fn(() => res);
+    const next = vi.fn();
+
+    await autenticarLogout(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(204);
+    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("no logout, token com assinatura falsa continua respondendo 401", async () => {
+    const token = jwt.sign({ id: 1, role: "admin" }, "outro-segredo", { jwtid: "abc" });
+    const res = criarRes();
+    const next = vi.fn();
+
+    await autenticarLogout(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("fora do logout, token vencido continua respondendo 401", async () => {
+    const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, SEGREDO);
+    const res = criarRes();
+
+    await autenticar(requisicaoCom(token), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido ou expirado" });
+  });
+});
+
+describe("logout (authService)", () => {
+  it("guarda o id do token até a hora em que ele expiraria e limpa os vencidos", async () => {
+    await authService.logout({ id: 1, jti: "abc", exp: 1_900_000_000 });
+
+    expect(TokenRevogado.bulkCreate).toHaveBeenCalledWith(
+      [{ jti: "abc", expira_em: new Date(1_900_000_000 * 1000) }],
+      { ignoreDuplicates: true }
+    );
+    expect(TokenRevogado.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("não grava nada para token antigo sem id", async () => {
+    await authService.logout({ id: 1, exp: 1_900_000_000 });
+
+    expect(TokenRevogado.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it("encerra a sessão mesmo se a limpeza dos vencidos falhar", async () => {
+    TokenRevogado.destroy.mockRejectedValue(new Error("banco lento"));
+
+    await expect(authService.logout({ jti: "abc", exp: 1_900_000_000 })).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith("Falha ao limpar tokens revogados vencidos:", "banco lento");
   });
 });
 
@@ -222,6 +424,20 @@ describe("authController.login", () => {
     const req = { body: { email: "bia@exemplo.com", senha: "123" } };
     const res = criarRes();
 
+    vi.spyOn(authService, "login").mockRejectedValueOnce(
+      Object.assign(new Error("Cadastro aguardando aprovação de um administrador"), {
+        name: "CadastroPendenteError",
+      })
+    );
+
+    await authController.login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      mensagem: "Cadastro aguardando aprovação de um administrador",
+    });
+
+    vi.clearAllMocks();
     vi.spyOn(authService, "login").mockRejectedValueOnce(new Error("Erro de banco"));
 
     await authController.login(req, res);

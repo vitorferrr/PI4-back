@@ -35,6 +35,11 @@ const getUsuarioModel = (sequelize, { DataTypes }) => {
           },
         },
       },
+      aprovado: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+      },
     },
     {
       tableName: "usuarios",

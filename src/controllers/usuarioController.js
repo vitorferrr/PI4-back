@@ -38,7 +38,15 @@ const criar = async (req, res) => {
 
 const listar = async (req, res) => {
   try{
-    const usuario = await usuarioService.listar();
+    const filtro = req.query?.aprovado === undefined ? undefined : req.query.aprovado === "true";
+
+    if (req.usuario.role !== "admin" && filtro === false) {
+      return res.status(200).json([]);
+    }
+
+    const usuario = await usuarioService.listar({
+      aprovado: req.usuario.role === "admin" ? filtro : true,
+    });
 
     return res.status(200).json(usuario);
   } catch (erro) {
@@ -81,6 +89,26 @@ const remover = async (req, res) => {
   }
 };
 
+const mudarAprovacao = (funcaoService, mensagemErro) => async (req, res) => {
+  try {
+    const usuario = await usuarioService[funcaoService](req.params.id);
+
+    if (!usuario) {
+      return res.status(404).json({
+        mensagem: "Usuário não encontrado",
+      });
+    }
+
+    return res.status(200).json(usuario);
+  } catch (erro) {
+    return tratarErro(res, erro, mensagemErro);
+  }
+};
+
+const aprovar = mudarAprovacao("aprovar", "Erro ao aprovar usuário");
+
+const reprovar = mudarAprovacao("reprovar", "Erro ao reprovar usuário");
+
 const buscarPorId = async (req, res) => {
   try{
     const usuario = await usuarioService.buscarPorId(req.params.id)
@@ -102,4 +130,6 @@ export default {
   atualizar,
   remover,
   buscarPorId,
+  aprovar,
+  reprovar,
 };
