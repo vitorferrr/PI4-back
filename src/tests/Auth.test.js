@@ -12,10 +12,15 @@ vi.mock("../models/index.js", () => ({
     Usuario: {
       findOne: vi.fn(),
     },
+    TokenRevogado: {
+      findOne: vi.fn(),
+      bulkCreate: vi.fn(),
+      destroy: vi.fn(),
+    },
   },
 }));
 
-const { Usuario } = models;
+const { TokenRevogado, Usuario } = models;
 const SEGREDO = "segredo-de-teste";
 
 const criarRes = () => {
@@ -52,6 +57,8 @@ describe("login (authService)", () => {
       where: { email: "bia@exemplo.com" },
     });
     expect(payload).toMatchObject({ id: 1, role: "gestor" });
+    expect(payload.jti).toMatch(/^[0-9a-f-]{36}$/);
+    expect(payload.exp - payload.iat).toBe(3600);
     expect(resultado.usuario).toEqual({
       id: 1,
       nome: "Bia",
@@ -143,6 +150,83 @@ describe("middleware autenticar", () => {
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe("middleware autenticar com logout", () => {
+  const requisicaoCom = (token) => ({ headers: { authorization: `Bearer ${token}` } });
+
+  it("recusa token encerrado pelo logout", async () => {
+    TokenRevogado.findOne.mockResolvedValue({ id: 1 });
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const res = criarRes();
+    const next = vi.fn();
+
+    await autenticar(requisicaoCom(token), res, next);
+
+    expect(TokenRevogado.findOne).toHaveBeenCalledWith({ attributes: ["id"], where: { jti: "abc" } });
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Sessão encerrada" });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("aceita token com id que não foi encerrado", async () => {
+    TokenRevogado.findOne.mockResolvedValue(null);
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const req = requisicaoCom(token);
+    const next = vi.fn();
+
+    await autenticar(req, criarRes(), next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.usuario).toMatchObject({ id: 1, jti: "abc" });
+  });
+
+  it("aceita token antigo, sem id, sem consultar o banco", async () => {
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO);
+    const next = vi.fn();
+
+    await autenticar(requisicaoCom(token), criarRes(), next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+  });
+
+  it("responde 503 quando não consegue consultar o banco", async () => {
+    TokenRevogado.findOne.mockRejectedValue(new Error("banco fora"));
+    const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const res = criarRes();
+    const next = vi.fn();
+
+    await autenticar(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe("logout (authService)", () => {
+  it("guarda o id do token até a hora em que ele expiraria e limpa os vencidos", async () => {
+    await authService.logout({ id: 1, jti: "abc", exp: 1_900_000_000 });
+
+    expect(TokenRevogado.bulkCreate).toHaveBeenCalledWith(
+      [{ jti: "abc", expira_em: new Date(1_900_000_000 * 1000) }],
+      { ignoreDuplicates: true }
+    );
+    expect(TokenRevogado.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("não grava nada para token antigo sem id", async () => {
+    await authService.logout({ id: 1, exp: 1_900_000_000 });
+
+    expect(TokenRevogado.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it("encerra a sessão mesmo se a limpeza dos vencidos falhar", async () => {
+    TokenRevogado.destroy.mockRejectedValue(new Error("banco lento"));
+
+    await expect(authService.logout({ jti: "abc", exp: 1_900_000_000 })).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith("Falha ao limpar tokens revogados vencidos:", "banco lento");
   });
 });
 

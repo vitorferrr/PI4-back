@@ -4,7 +4,19 @@ import jwt from "jsonwebtoken";
 import authRoutes from "../routes/authRoutes.js";
 import usuarioService from "../services/usuarioService.js";
 
-vi.mock("../models/index.js", () => ({ default: { Usuario: { findOne: vi.fn() } } }));
+vi.mock("../models/index.js", () => {
+  const revogados = new Set();
+  return {
+    default: {
+      Usuario: { findOne: vi.fn() },
+      TokenRevogado: {
+        findOne: vi.fn(async ({ where }) => (revogados.has(where.jti) ? { id: 1 } : null)),
+        bulkCreate: vi.fn(async (linhas) => linhas.forEach(({ jti }) => revogados.add(jti))),
+        destroy: vi.fn(async () => 0),
+      },
+    },
+  };
+});
 vi.mock("../services/usuarioService.js", () => ({ default: { criar: vi.fn() } }));
 
 const SEGREDO = "segredo-de-teste";
@@ -155,5 +167,31 @@ describe("POST /auth/signup", () => {
     expect(resposta.status).toBe(500);
     expect(await resposta.json()).toEqual({ mensagem: "Erro ao realizar cadastro" });
     consoleError.mockRestore();
+  });
+});
+
+describe("POST /auth/logout", () => {
+  it("encerra a sessão: o mesmo token passa a receber 401", async () => {
+    const { token } = await (await requisitar("/signup", cadastro)).json();
+
+    const saida = await requisitar("/logout", undefined, token);
+    const repeticao = await requisitar("/logout", undefined, token);
+
+    expect(saida.status).toBe(204);
+    expect(repeticao.status).toBe(401);
+    expect(await repeticao.json()).toEqual({ mensagem: "Sessão encerrada" });
+  });
+
+  it("não encerra outra sessão do mesmo usuário", async () => {
+    const primeira = (await (await requisitar("/signup", cadastro)).json()).token;
+    const segunda = (await (await requisitar("/signup", cadastro)).json()).token;
+
+    await requisitar("/logout", undefined, primeira);
+
+    expect((await requisitar("/logout", undefined, segunda)).status).toBe(204);
+  });
+
+  it("exige token", async () => {
+    expect((await requisitar("/logout")).status).toBe(401);
   });
 });

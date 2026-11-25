@@ -1,10 +1,13 @@
+import { randomUUID } from "node:crypto";
 import bcrypt from "bcrypt";
+import Sequelize from "sequelize";
 import jwt from "jsonwebtoken";
 import models from "../models/index.js";
 import erroValidacao from "../utils/erroValidacao.js";
 import usuarioService from "./usuarioService.js";
 
-const { Usuario } = models;
+const { TokenRevogado, Usuario } = models;
+const { Op } = Sequelize;
 
 const SENHA_MINIMA = 8;
 const SENHA_MAXIMA = 72;
@@ -27,7 +30,7 @@ const abrirSessao = (usuario) => {
   const token = jwt.sign(
     { id: usuario.id, role: usuario.role },
     process.env.JWT_SECRET,
-    { expiresIn: "1h" }
+    { expiresIn: "1h", jwtid: randomUUID() }
   );
 
   return {
@@ -93,7 +96,27 @@ const signup = async (dados = {}) => {
   }
 };
 
+const tokenRevogado = async (jti) =>
+  Boolean(await TokenRevogado.findOne({ attributes: ["id"], where: { jti } }));
+
+const logout = async ({ jti, exp } = {}) => {
+  if (!jti) return;
+
+  await TokenRevogado.bulkCreate(
+    [{ jti, expira_em: new Date(exp * 1000) }],
+    { ignoreDuplicates: true }
+  );
+
+  try {
+    await TokenRevogado.destroy({ where: { expira_em: { [Op.lt]: new Date() } } });
+  } catch (erro) {
+    console.error("Falha ao limpar tokens revogados vencidos:", erro.message);
+  }
+};
+
 export default {
   login,
   signup,
+  logout,
+  tokenRevogado,
 };

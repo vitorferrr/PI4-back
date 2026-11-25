@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import usuarioRoutes from "../routes/usuarioRoutes.js";
 import usuarioService from "../services/usuarioService.js";
 
+vi.mock("../services/authService.js", () => ({ default: { tokenRevogado: vi.fn(async () => false) } }));
 vi.mock("../services/usuarioService.js", () => ({
   default: {
     criar: vi.fn(),

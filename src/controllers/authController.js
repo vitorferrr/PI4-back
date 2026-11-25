@@ -40,7 +40,18 @@ const signup = async (req, res) => {
   }
 };
 
+const logout = async (req, res) => {
+  try {
+    await authService.logout(req.usuario);
+
+    return res.status(204).send();
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao encerrar a sessão");
+  }
+};
+
 export default {
   login,
   signup,
+  logout,
 };

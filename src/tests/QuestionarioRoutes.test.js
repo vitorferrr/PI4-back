@@ -6,6 +6,7 @@ import visitaRoutes from "../routes/visitaRoutes.js";
 import questionarioService from "../services/questionarioService.js";
 import visitaService from "../services/visitaService.js";
 
+vi.mock("../services/authService.js", () => ({ default: { tokenRevogado: vi.fn(async () => false) } }));
 vi.mock("../services/documentoService.js", () => ({
   default: {
     gerar: vi.fn(),
