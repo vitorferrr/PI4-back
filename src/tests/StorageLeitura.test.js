@@ -61,6 +61,22 @@ describe("leitura privada", () => {
     expect(String(erro)).not.toContain("NAO_EXIBIR");
   });
 
+  it.each([
+    { status: 404 }, { status: 400, statusCode: "404" }, { status: 400, code: "NoSuchKey" },
+  ])("separa arquivo inexistente de falha de rede (%#)", async (falha) => {
+    download.mockResolvedValue({ data: null, error: { message: "Object not found", ...falha } });
+    const erro = await baixarArquivo(ref).catch((e) => e);
+    expect(erro).toMatchObject({ name: "StorageError", codigo: "STORAGE_ARQUIVO_NAO_ENCONTRADO" });
+    expect(String(erro)).not.toContain("Object not found");
+  });
+
+  it.each([{ status: 500 }, { status: 400, statusCode: "500" }])(
+    "mantém falha do provedor como falha de download (%#)", async (falha) => {
+      download.mockResolvedValue({ data: null, error: { message: "x", ...falha } });
+      await expect(baixarArquivo(ref)).rejects.toMatchObject({ codigo: "STORAGE_DOWNLOAD_FALHOU" });
+    }
+  );
+
   it("sanitiza falha ao consumir o corpo baixado", async () => {
     download.mockResolvedValue({ data: { arrayBuffer: vi.fn().mockRejectedValue(new Error("segredo")) }, error: null });
     await expect(baixarArquivo(ref)).rejects.toMatchObject({ codigo: "STORAGE_DOWNLOAD_FALHOU" });

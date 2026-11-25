@@ -3,10 +3,23 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import documentoRoutes from "../routes/documentoRoutes.js";
 import assinaturaService from "../services/assinaturaService.js";
+import documentoService from "../services/documentoService.js";
+import { waitUntil } from "@vercel/functions";
+
+vi.mock("../services/documentoService.js", () => ({
+  default: {
+    gerar: vi.fn(),
+    finalizar: vi.fn(),
+    enviarEmail: vi.fn(),
+  },
+}));
+
+vi.mock("@vercel/functions", () => ({ waitUntil: vi.fn() }));
 
 vi.mock("../services/assinaturaService.js", () => ({
   default: {
     registrar: vi.fn(),
+    remover: vi.fn(),
   },
 }));
 
@@ -16,9 +29,9 @@ const corpo = { assinante_tipo: "fiscalizador", imagem: "base64" };
 let servidor;
 let urlBase;
 
-const requisitar = (caminho, role = "fiscalizador", id = 5, body = corpo) =>
+const requisitar = (caminho, role = "fiscalizador", id = 5, body = corpo, method = "POST") =>
   fetch(`${urlBase}${caminho}`, {
-    method: "POST",
+    method,
     headers: {
       Authorization: `Bearer ${jwt.sign({ id, role }, SEGREDO)}`,
       "Content-Type": "application/json",
@@ -48,9 +61,140 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+describe("POST /documentos/:id/finalizar", () => {
+  it("repete o fechamento conferindo o usuário do token", async () => {
+    const resultado = { situacao: "finalizado", documento_id: 7, pendentes: [], pdf_gerado: false, enviado_email: true };
+    documentoService.finalizar.mockResolvedValue({ ...resultado, email_pendente: false });
+
+    const resposta = await requisitar("/documentos/7/finalizar");
+
+    expect(resposta.status).toBe(200);
+    expect(documentoService.finalizar).toHaveBeenCalledWith(7, {
+      usuario: expect.objectContaining({ id: 5, role: "fiscalizador" }),
+    });
+    expect(documentoService.enviarEmail).not.toHaveBeenCalled();
+    expect(await resposta.json()).toEqual(resultado);
+  });
+
+  it("envia o e-mail pendente e responde com o resultado", async () => {
+    documentoService.finalizar.mockResolvedValue({
+      situacao: "finalizado", documento_id: 7, pendentes: [], pdf_gerado: false, enviado_email: false, email_pendente: true,
+    });
+    documentoService.enviarEmail.mockResolvedValue("enviado");
+
+    const resposta = await requisitar("/documentos/7/finalizar");
+    const corpo = await resposta.json();
+
+    expect(documentoService.enviarEmail).toHaveBeenCalledWith(7);
+    expect(corpo.enviado_email).toBe(true);
+    expect(corpo.envio_email).toBeUndefined();
+  });
+
+  it("informa envio em andamento sem marcar como enviado", async () => {
+    documentoService.finalizar.mockResolvedValue({
+      situacao: "finalizado", documento_id: 7, pendentes: [], pdf_gerado: false, enviado_email: false, email_pendente: true,
+    });
+    documentoService.enviarEmail.mockResolvedValue("em_andamento");
+
+    const corpo = await (await requisitar("/documentos/7/finalizar")).json();
+
+    expect(corpo.enviado_email).toBe(false);
+    expect(corpo.envio_email).toBe("em_andamento");
+  });
+
+  it("devolve o assinatura_id quando a assinatura precisa ser coletada de novo", async () => {
+    documentoService.finalizar.mockRejectedValue(
+      Object.assign(new Error("A assinatura do responsável Carlos não foi encontrada ou está ilegível."), {
+        name: "ValidacaoError",
+        assinatura_id: 2,
+      })
+    );
+
+    const resposta = await requisitar("/documentos/7/finalizar");
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Erro ao finalizar documento",
+      erros: ["A assinatura do responsável Carlos não foi encontrada ou está ilegível."],
+      assinatura_id: 2,
+    });
+  });
+
+  it("responde 404 quando não há acesso ou o documento não existe", async () => {
+    documentoService.finalizar.mockResolvedValue(null);
+
+    expect((await requisitar("/documentos/7/finalizar")).status).toBe(404);
+  });
+
+  it("responde 403 para gestor", async () => {
+    expect((await requisitar("/documentos/7/finalizar", "gestor", 1)).status).toBe(403);
+    expect(documentoService.finalizar).not.toHaveBeenCalled();
+  });
+
+  it("responde 503 quando o Storage falha", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    documentoService.finalizar.mockRejectedValue(
+      Object.assign(new Error("x"), { name: "StorageError", codigo: "STORAGE_UPLOAD_FALHOU" })
+    );
+
+    expect((await requisitar("/documentos/7/finalizar")).status).toBe(503);
+    consoleError.mockRestore();
+  });
+});
+
+describe("DELETE /documentos/:id/assinaturas/:assinaturaId", () => {
+  it("remove a assinatura e responde 204", async () => {
+    assinaturaService.remover.mockResolvedValue(true);
+
+    const resposta = await requisitar("/documentos/7/assinaturas/3", "fiscalizador", 5, undefined, "DELETE");
+
+    expect(resposta.status).toBe(204);
+    expect(assinaturaService.remover).toHaveBeenCalledWith(
+      7,
+      3,
+      expect.objectContaining({ id: 5, role: "fiscalizador" })
+    );
+  });
+
+  it("responde 404 quando a assinatura não existe ou não é acessível", async () => {
+    assinaturaService.remover.mockResolvedValue(null);
+
+    const resposta = await requisitar("/documentos/7/assinaturas/3", "fiscalizador", 5, undefined, "DELETE");
+
+    expect(resposta.status).toBe(404);
+    expect(await resposta.json()).toEqual({ mensagem: "Assinatura não encontrada" });
+  });
+
+  it.each(["abc", "0"])("responde 400 para id de assinatura inválido (%s)", async (id) => {
+    const resposta = await requisitar(`/documentos/7/assinaturas/${id}`, "fiscalizador", 5, undefined, "DELETE");
+
+    expect(resposta.status).toBe(400);
+    expect(assinaturaService.remover).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o PDF já foi gerado", async () => {
+    assinaturaService.remover.mockRejectedValue(
+      Object.assign(new Error("O PDF do documento já foi gerado; a assinatura não pode ser removida"), {
+        name: "ValidacaoError",
+      })
+    );
+
+    const resposta = await requisitar("/documentos/7/assinaturas/3", "fiscalizador", 5, undefined, "DELETE");
+
+    expect(resposta.status).toBe(400);
+  });
+
+  it("responde 403 para gestor", async () => {
+    const resposta = await requisitar("/documentos/7/assinaturas/3", "gestor", 1, undefined, "DELETE");
+
+    expect(resposta.status).toBe(403);
+  });
+});
+
 describe("POST /documentos/:id/assinaturas", () => {
   it("registra a assinatura em nome do usuário do token", async () => {
     assinaturaService.registrar.mockResolvedValue({ id: 1, documento_id: 7 });
+    documentoService.finalizar.mockResolvedValue({ situacao: "pendente", documento_id: 7, pendentes: ["x"] });
 
     const resposta = await requisitar("/documentos/7/assinaturas");
 
@@ -60,7 +204,76 @@ describe("POST /documentos/:id/assinaturas", () => {
       corpo,
       expect.objectContaining({ id: 5, role: "fiscalizador" })
     );
-    expect(await resposta.json()).toEqual({ id: 1, documento_id: 7 });
+    expect(documentoService.finalizar).toHaveBeenCalledWith(7);
+    expect(await resposta.json()).toEqual({
+      id: 1,
+      documento_id: 7,
+      finalizacao: { situacao: "pendente", documento_id: 7, pendentes: ["x"] },
+    });
+  });
+
+  it("mantém o 201 quando a finalização falha depois de salvar a assinatura", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    assinaturaService.registrar.mockResolvedValue({ id: 1, documento_id: 7 });
+    documentoService.finalizar.mockRejectedValue(new Error("Storage fora"));
+
+    const resposta = await requisitar("/documentos/7/assinaturas");
+
+    expect(resposta.status).toBe(201);
+    expect((await resposta.json()).finalizacao).toEqual({
+      situacao: "erro",
+      documento_id: 7,
+      mensagem: "Não foi possível gerar o PDF. Tente finalizar novamente.",
+    });
+    expect(consoleError).toHaveBeenCalledWith("Falha ao finalizar o documento:", 7, "Error", "Storage fora");
+    consoleError.mockRestore();
+  });
+
+  it("informa qual assinatura não pôde ser lida", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    assinaturaService.registrar.mockResolvedValue({ id: 1, documento_id: 7 });
+    documentoService.finalizar.mockRejectedValue(
+      Object.assign(new Error("Não foi possível ler a assinatura do fiscalizador Ana."), {
+        name: "ValidacaoError",
+        assinatura_id: 3,
+      })
+    );
+
+    const finalizacao = (await (await requisitar("/documentos/7/assinaturas")).json()).finalizacao;
+
+    expect(finalizacao).toEqual({
+      situacao: "erro",
+      documento_id: 7,
+      mensagem: "Não foi possível ler a assinatura do fiscalizador Ana.",
+      assinatura_id: 3,
+    });
+  });
+
+  it("responde com o PDF gerado e deixa o e-mail para depois da resposta", async () => {
+    assinaturaService.registrar.mockResolvedValue({ id: 1, documento_id: 7 });
+    documentoService.finalizar.mockResolvedValue({
+      situacao: "finalizado",
+      documento_id: 7,
+      pendentes: [],
+      pdf_gerado: true,
+      enviado_email: false,
+      email_pendente: true,
+    });
+    documentoService.enviarEmail.mockResolvedValue(true);
+
+    const resposta = await requisitar("/documentos/7/assinaturas");
+
+    expect(resposta.status).toBe(201);
+    expect((await resposta.json()).finalizacao).toEqual({
+      situacao: "finalizado",
+      documento_id: 7,
+      pendentes: [],
+      pdf_gerado: true,
+      enviado_email: false,
+      envio_email: "em_andamento",
+    });
+    expect(documentoService.enviarEmail).toHaveBeenCalledWith(7);
+    expect(waitUntil).toHaveBeenCalledWith(expect.any(Promise));
   });
 
   it("responde 404 quando o documento não existe ou não é do fiscal", async () => {

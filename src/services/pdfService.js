@@ -331,13 +331,18 @@ const desenharFolhaDeContinuacao = (doc, temContinuacao) => {
 
 const ehUrl = (imagem) => typeof imagem === "string" && /^https?:\/\//i.test(imagem.trim());
 
-const desenharAssinatura = (doc, imagem, x, y, largura, altura) => {
-  if (!imagem) return;
+const desenharAssinatura = (doc, imagem, x, y, largura, altura, estrito = false) => {
+  if (!imagem) {
+    if (estrito) throw new Error("Assinatura ausente no documento final");
+    return;
+  }
 
   try {
     if (ehUrl(imagem)) throw new Error("A assinatura deve ser enviada como Buffer ou base64");
     doc.image(paraBuffer(imagem), x, y, { fit: [largura, altura], align: "center", valign: "center" });
-  } catch {
+  } catch (erro) {
+    if (estrito) throw erro;
+
     doc
       .font(FONTE_ITALICO)
       .fontSize(7)
@@ -351,7 +356,7 @@ const desenharAssinatura = (doc, imagem, x, y, largura, altura) => {
 
 const MAXIMO_FISCALIZADORES = 3;
 
-const desenharFiscalizadores = (doc, fiscalizadores, y, largura, altura) => {
+const desenharFiscalizadores = (doc, fiscalizadores, y, largura, altura, estrito) => {
   const colunas = fiscalizadores.length;
   const larguraCelula = largura / colunas;
 
@@ -360,7 +365,7 @@ const desenharFiscalizadores = (doc, fiscalizadores, y, largura, altura) => {
 
     const opcoesTexto = { width: larguraCelula - 8, align: "center", lineBreak: false };
 
-    desenharAssinatura(doc, fiscal.assinatura, x + 6, y + 5, larguraCelula - 12, 33);
+    desenharAssinatura(doc, fiscal.assinatura, x + 6, y + 5, larguraCelula - 12, 33, estrito);
     doc
       .lineWidth(0.5)
       .moveTo(x + 8, y + 42)
@@ -381,7 +386,7 @@ const desenharFiscalizadores = (doc, fiscalizadores, y, largura, altura) => {
   }
 };
 
-const desenharRecebimento = (doc, recebimento, x, topo, largura, altura) => {
+const desenharRecebimento = (doc, recebimento, x, topo, largura, altura, estrito) => {
   const data = partesDaData(recebimento.data);
   const dataRecebida = data ? `${data.dia} / ${data.mes} / ${data.ano}` : "_____/_____/______";
   doc.font(FONTE).fontSize(8.5).text(`Recebido em: ${dataRecebida}`, x + 8, topo + 9, {
@@ -396,7 +401,7 @@ const desenharRecebimento = (doc, recebimento, x, topo, largura, altura) => {
       lineBreak: false,
     });
   } else {
-    desenharAssinatura(doc, recebimento.assinatura, x + 8, topo + 22, largura - 16, base - topo - 50);
+    desenharAssinatura(doc, recebimento.assinatura, x + 8, topo + 22, largura - 16, base - topo - 50, estrito);
   }
 
   doc
@@ -418,7 +423,7 @@ const desenharRecebimento = (doc, recebimento, x, topo, largura, altura) => {
   doc.lineWidth(0.8);
 };
 
-const desenharAutenticacao = (doc, fiscalizadores, recebimento) => {
+const desenharAutenticacao = (doc, fiscalizadores, recebimento, estrito) => {
   if (fiscalizadores.length > MAXIMO_FISCALIZADORES) {
     throw new Error(`O documento comporta no máximo ${MAXIMO_FISCALIZADORES} agentes fiscalizadores`);
   }
@@ -432,8 +437,8 @@ const desenharAutenticacao = (doc, fiscalizadores, recebimento) => {
   doc.moveTo(divisao, topo).lineTo(divisao, topo + altura).stroke();
 
   const assinantes = fiscalizadores.length ? fiscalizadores : [{}];
-  desenharFiscalizadores(doc, assinantes, topo, divisao - ESQUERDA, altura);
-  desenharRecebimento(doc, recebimento, divisao, topo, DIREITA - divisao, altura);
+  desenharFiscalizadores(doc, assinantes, topo, divisao - ESQUERDA, altura, estrito);
+  desenharRecebimento(doc, recebimento, divisao, topo, DIREITA - divisao, altura, estrito);
 };
 
 const desenharContinuacao = (doc, { numero, linhas, folha, totalFolhas, logos }) => {
@@ -477,6 +482,7 @@ const desenharDocumentoVisita = (doc, dados) => {
     fiscalizadores = [],
     recebimento = {},
     logos = carregarLogosPadrao(),
+    exigirAssinaturas = false,
   } = dados;
 
   if (!TIPOS_DOCUMENTO.some((opcao) => opcao.chave === tipo)) {
@@ -494,7 +500,7 @@ const desenharDocumentoVisita = (doc, dados) => {
   desenharLinhasPautadas(doc, folhas[0], LINHAS_PRIMEIRA_FOLHA);
   desenharFolhaDeContinuacao(doc, folhas.length > 1);
 
-  desenharAutenticacao(doc, fiscalizadores, recebimento);
+  desenharAutenticacao(doc, fiscalizadores, recebimento, exigirAssinaturas);
   desenharRodape(doc, logos);
 
   folhas.slice(1).forEach((linhas, indice) => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Sequelize from "sequelize";
 import pg from "pg";
 import { PNG } from "pngjs";
@@ -24,6 +24,8 @@ vi.mock("../models/index.js", () => {
     },
   };
 });
+
+vi.mock("../config/supabase.js", () => ({ getStorageContext: () => ({ bucket: "documentos" }) }));
 
 vi.mock("../services/storageService.js", () => ({
   uploadArquivo: vi.fn(),
@@ -363,6 +365,116 @@ describe("regras do documento", () => {
     expect(Assinatura.create).not.toHaveBeenCalled();
     expect(removerArquivo).not.toHaveBeenCalled();
     expect(sequelize.transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("remover assinatura", () => {
+  const assinaturaSalva = (dados = {}) => ({
+    id: 3,
+    imagem_assinatura_url: "visitas/10/assinaturas/3.png",
+    destroy: vi.fn(),
+    ...dados,
+  });
+  let consoleInfo;
+
+  beforeEach(() => {
+    consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+  });
+
+  afterEach(() => consoleInfo.mockRestore());
+
+  it("registra no log quem removeu a assinatura", async () => {
+    Assinatura.findOne.mockResolvedValue(assinaturaSalva({ assinante_tipo: "denunciado" }));
+
+    await assinaturaService.remover(7, 3, usuario);
+
+    expect(consoleInfo).toHaveBeenCalledWith("Assinatura removida:", {
+      documento_id: 7,
+      assinatura_id: 3,
+      assinante_tipo: "denunciado",
+      removida_por: usuario.id,
+      removida_em: expect.any(String),
+    });
+  });
+
+  it("não registra remoção quando a assinatura não existe", async () => {
+    Assinatura.findOne.mockResolvedValue(null);
+
+    expect(await assinaturaService.remover(7, 3, usuario)).toBeNull();
+    expect(consoleInfo).not.toHaveBeenCalled();
+  });
+
+  it("apaga a assinatura com o documento travado e depois remove a imagem", async () => {
+    const assinatura = assinaturaSalva();
+    Assinatura.findOne.mockResolvedValue(assinatura);
+
+    expect(await assinaturaService.remover(7, 3, usuario)).toBe(true);
+
+    expect(Documento.findByPk).toHaveBeenCalledWith(7, { transaction: transacao, lock: "UPDATE" });
+    expect(Assinatura.findOne).toHaveBeenCalledWith({
+      where: { id: 3, documento_id: 7 },
+      transaction: transacao,
+    });
+    expect(assinatura.destroy).toHaveBeenCalledWith({ transaction: transacao });
+    expect(transacao.commit).toHaveBeenCalledTimes(1);
+    expect(removerArquivo).toHaveBeenCalledWith({
+      bucket: "documentos",
+      path: "visitas/10/assinaturas/3.png",
+    });
+    expect(removerArquivo.mock.invocationCallOrder[0]).toBeGreaterThan(
+      transacao.commit.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("remove a recusa, que não tem imagem", async () => {
+    Assinatura.findOne.mockResolvedValue(assinaturaSalva({ imagem_assinatura_url: null }));
+
+    expect(await assinaturaService.remover(7, 3, usuario)).toBe(true);
+    expect(removerArquivo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["documento inexistente", () => Documento.findByPk.mockResolvedValue(null)],
+    ["fiscal de outra visita", () => {}],
+    ["assinatura de outro documento", () => Assinatura.findOne.mockResolvedValue(null)],
+  ])("retorna null para %s", async (caso, preparar) => {
+    preparar();
+    const quem = caso === "fiscal de outra visita" ? { id: 9, role: "fiscalizador" } : usuario;
+
+    expect(await assinaturaService.remover(7, 3, quem)).toBeNull();
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    expect(removerArquivo).not.toHaveBeenCalled();
+  });
+
+  it("não remove depois que o PDF foi gerado", async () => {
+    Documento.findByPk.mockResolvedValue({ ...documentoAberto, url_arquivo_pdf: "pdfs/doc.pdf" });
+
+    await expect(assinaturaService.remover(7, 3, usuario)).rejects.toThrow(
+      "O PDF do documento já foi gerado; a assinatura não pode ser removida"
+    );
+    expect(transacao.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it("não remove de visita que não está em andamento", async () => {
+    Visita.findByPk.mockResolvedValue({ ...visitaEmAndamento, status: "concluida" });
+
+    await expect(assinaturaService.remover(7, 3, usuario)).rejects.toThrow(
+      "Só é possível remover assinaturas de visitas em andamento"
+    );
+  });
+
+  it("mantém a remoção quando apagar a imagem falha", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    Assinatura.findOne.mockResolvedValue(assinaturaSalva());
+    removerArquivo.mockRejectedValue(new Error("rede fora"));
+
+    expect(await assinaturaService.remover(7, 3, usuario)).toBe(true);
+    expect(consoleError).toHaveBeenCalledWith(
+      "Falha ao remover imagem de assinatura órfã:",
+      "visitas/10/assinaturas/3.png",
+      "rede fora"
+    );
+    consoleError.mockRestore();
   });
 });
 

@@ -27,6 +27,7 @@
   "homepage": "https://github.com/Giantrafa/PI4-back#readme",
   "dependencies": {
     "@supabase/supabase-js": "^2.119.2",
+    "@vercel/functions": "^3.11.3",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^18.0.1",

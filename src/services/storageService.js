@@ -24,6 +24,11 @@ const erroStorage = (codigo, mensagem) => {
   return erro;
 };
 
+const arquivoNaoEncontrado = (erro) =>
+  Boolean(erro) &&
+  (erro.status === 404 || String(erro.statusCode) === "404" ||
+    ["NoSuchKey", "not_found"].includes(erro.code));
+
 const contextoDaReferencia = (referencia) => {
   const { bucket, path } = referencia ?? {};
   if (typeof bucket !== "string" || typeof path !== "string" ||
@@ -111,8 +116,16 @@ export const removerArquivo = async (referencia = {}) => {
 export const baixarArquivo = async (referencia) => {
   const { client, bucket, path } = contextoDaReferencia(referencia);
   await verificarBucketPrivado(client, bucket);
+  let resultado;
   try {
-    const resultado = await client.storage.from(bucket).download(path);
+    resultado = await client.storage.from(bucket).download(path);
+  } catch {
+    resultado = undefined;
+  }
+  if (arquivoNaoEncontrado(resultado?.error)) {
+    throw erroStorage("STORAGE_ARQUIVO_NAO_ENCONTRADO", "Arquivo não encontrado no armazenamento.");
+  }
+  try {
     if (resultado?.error || !resultado?.data) throw new Error();
     return Buffer.from(await resultado.data.arrayBuffer());
   } catch {
