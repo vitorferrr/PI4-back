@@ -201,6 +201,16 @@ describe("POST /auth/logout", () => {
     expect(await depois.json()).toEqual({ mensagem: "Sessão encerrada" });
   });
 
+  it("logout com token vencido pelo tempo responde 204", async () => {
+    const vencido = jwt.sign(
+      { id: 9, role: "fiscalizador", exp: Math.floor(Date.now() / 1000) - 60 },
+      SEGREDO,
+      { jwtid: randomUUID() }
+    );
+
+    expect((await requisitar("/logout", undefined, vencido)).status).toBe(204);
+  });
+
   it("repetir o logout com o mesmo token responde 204 de novo", async () => {
     const token = novaSessao();
 

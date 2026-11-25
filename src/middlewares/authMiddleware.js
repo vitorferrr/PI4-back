@@ -6,7 +6,7 @@ import authService from "../services/authService.js";
 const bancoIndisponivel = (erro) =>
   erro instanceof Sequelize.ConnectionError || erro instanceof Sequelize.TimeoutError;
 
-const criarAutenticacao = ({ aoEncontrarSessaoEncerrada }) => async (req, res, next) => {
+const criarAutenticacao = ({ aoEncontrarSessaoEncerrada, aoEncontrarTokenVencido }) => async (req, res, next) => {
   const authorization = req.headers.authorization;
 
   if (!authorization) {
@@ -24,6 +24,10 @@ const criarAutenticacao = ({ aoEncontrarSessaoEncerrada }) => async (req, res, n
   try {
     payload = jwt.verify(token, process.env.JWT_SECRET);
   } catch (erro) {
+    if (erro.name === "TokenExpiredError" && aoEncontrarTokenVencido) {
+      return aoEncontrarTokenVencido(res);
+    }
+
     console.error(erro);
 
     return responderErro(res, 401, "Token inválido ou expirado");
@@ -56,8 +60,11 @@ const autenticar = criarAutenticacao({
   aoEncontrarSessaoEncerrada: (res) => responderErro(res, 401, "Sessão encerrada"),
 });
 
+const sessaoJaTerminada = (res) => res.status(204).send();
+
 export const autenticarLogout = criarAutenticacao({
-  aoEncontrarSessaoEncerrada: (res) => res.status(204).send(),
+  aoEncontrarSessaoEncerrada: sessaoJaTerminada,
+  aoEncontrarTokenVencido: sessaoJaTerminada,
 });
 
 export default autenticar;

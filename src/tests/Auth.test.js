@@ -285,6 +285,42 @@ describe("middleware autenticar com logout", () => {
     expect(res.status).toHaveBeenCalledWith(204);
     expect(next).not.toHaveBeenCalled();
   });
+
+  it("no logout, token vencido pelo tempo responde 204 sem consultar o banco", async () => {
+    const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, SEGREDO, {
+      jwtid: "abc",
+    });
+    const res = criarRes();
+    res.send = vi.fn(() => res);
+    const next = vi.fn();
+
+    await autenticarLogout(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(204);
+    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("no logout, token com assinatura falsa continua respondendo 401", async () => {
+    const token = jwt.sign({ id: 1, role: "admin" }, "outro-segredo", { jwtid: "abc" });
+    const res = criarRes();
+    const next = vi.fn();
+
+    await autenticarLogout(requisicaoCom(token), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("fora do logout, token vencido continua respondendo 401", async () => {
+    const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, SEGREDO);
+    const res = criarRes();
+
+    await autenticar(requisicaoCom(token), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido ou expirado" });
+  });
 });
 
 describe("logout (authService)", () => {
