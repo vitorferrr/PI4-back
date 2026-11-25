@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import models from "../models/index.js";
+import normalizarEmail from "../utils/normalizarEmail.js";
 
 const { Usuario } = models;
 
@@ -17,7 +18,8 @@ const erroValidacao = (mensagem) => {
 };
 
 const criar = async (dados) => {
-  const { nome, email, senha, role, matricula, aprovado } = dados;
+  const { nome, senha, role, matricula, aprovado } = dados;
+  const email = normalizarEmail(dados.email);
 
   if (!senha) {
     throw erroValidacao("A senha é obrigatória");
@@ -91,6 +93,10 @@ const atualizar = async (id, dados) => {
       dadosAtualizados[campo] = dados[campo];
     }
   });
+
+  if (dadosAtualizados.email !== undefined) {
+    dadosAtualizados.email = normalizarEmail(dadosAtualizados.email);
+  }
 
   if (dados.senha) {
     dadosAtualizados.senha_hash = await bcrypt.hash(dados.senha, 10);

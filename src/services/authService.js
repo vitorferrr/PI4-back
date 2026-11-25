@@ -4,6 +4,7 @@ import Sequelize from "sequelize";
 import jwt from "jsonwebtoken";
 import models from "../models/index.js";
 import erroValidacao from "../utils/erroValidacao.js";
+import normalizarEmail from "../utils/normalizarEmail.js";
 import usuarioService from "./usuarioService.js";
 
 const { TokenRevogado, Usuario } = models;
@@ -52,9 +53,10 @@ const abrirSessao = (usuario) => {
 };
 
 const login = async (dados = {}) => {
-  const { email, senha } = dados ?? {};
+  const { senha } = dados ?? {};
+  const email = normalizarEmail(dados?.email);
 
-  if (!email || !senha) {
+  if (typeof email !== "string" || !email || !senha) {
     throw erroAutenticacao();
   }
 
@@ -91,7 +93,7 @@ const signup = async (dados = {}) => {
   try {
     const usuario = await usuarioService.criar({
       nome: nome.trim(),
-      email: email.trim(),
+      email: normalizarEmail(email),
       senha,
       matricula,
       role: "fiscalizador",

@@ -95,8 +95,8 @@ describe("POST /auth/signup", () => {
     );
   });
 
-  it("repassa a matrícula e limpa espaços do nome e do email", async () => {
-    await requisitar("/signup", { ...cadastro, nome: " Ana ", email: " ana@exemplo.com ", matricula: "123" });
+  it("repassa a matrícula, limpa espaços e passa o email para minúsculas", async () => {
+    await requisitar("/signup", { ...cadastro, nome: " Ana ", email: " Ana@Exemplo.com ", matricula: "123" });
 
     expect(usuarioService.criar).toHaveBeenCalledWith({
       nome: "Ana",

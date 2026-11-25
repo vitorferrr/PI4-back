@@ -122,6 +122,22 @@ describe("cadastro de usuário", () => {
 
     expect(Usuario.create).not.toHaveBeenCalled();
   });
+
+  it("confere e grava o email sem espaços e em minúsculas", async () => {
+    Usuario.findOne.mockResolvedValue(null);
+    Usuario.create.mockImplementation(async (dados) => criarUsuarioFalso(dados));
+
+    const resultado = await usuarioService.criar({
+      nome: "Bia",
+      email: " Bia@Exemplo.COM ",
+      senha: "1234",
+      role: "fiscalizador",
+    });
+
+    expect(Usuario.findOne).toHaveBeenCalledWith({ where: { email: "bia@exemplo.com" } });
+    expect(Usuario.create).toHaveBeenCalledWith(expect.objectContaining({ email: "bia@exemplo.com" }));
+    expect(resultado.email).toBe("bia@exemplo.com");
+  });
 });
 
 describe("validações do modelo Usuario", () => {
@@ -270,6 +286,15 @@ describe("atualizar usuário", () => {
     expect(usuario.update).toHaveBeenCalledWith({ nome: "Beatriz" });
     expect(resultado.nome).toBe("Beatriz");
     expect(resultado.senha_hash).toBeUndefined();
+  });
+
+  it("grava o email novo sem espaços e em minúsculas", async () => {
+    const usuario = criarUsuarioFalso({ ...dadosValidos });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await usuarioService.atualizar(1, { email: " Nova@Exemplo.com" });
+
+    expect(usuario.update).toHaveBeenCalledWith({ email: "nova@exemplo.com" });
   });
 
   it("deve atualizar a matrícula", async () => {

@@ -68,6 +68,26 @@ describe("login (authService)", () => {
     });
   });
 
+  it("procura o email sem espaços e em minúsculas", async () => {
+    Usuario.findOne.mockResolvedValue(null);
+
+    await expect(
+      authService.login({ email: "  Bia@Exemplo.COM ", senha: "1234" })
+    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+
+    expect(Usuario.findOne).toHaveBeenCalledWith({ where: { email: "bia@exemplo.com" } });
+  });
+
+  it.each([[123], [["bia@exemplo.com"]], ["   "]])(
+    "rejeita email que não é texto preenchido (%o) sem consultar o banco",
+    async (email) => {
+      await expect(authService.login({ email, senha: "1234" })).rejects.toMatchObject({
+        name: "AutenticacaoError",
+      });
+      expect(Usuario.findOne).not.toHaveBeenCalled();
+    }
+  );
+
   it("rejeita quando email ou senha não são informados", async () => {
     await expect(authService.login({ email: "bia@exemplo.com" })).rejects.toThrow(
       "Email ou senha inválidos"
