@@ -1,4 +1,5 @@
 import authService from "../services/authService.js";
+import tratarErro from "../utils/tratarErro.js";
 
 const login = async (req, res) => {
   const { email, senha } = req.body ?? {};
@@ -25,6 +26,21 @@ const login = async (req, res) => {
   }
 };
 
+const signup = async (req, res) => {
+  try {
+    const resultado = await authService.signup(req.body);
+
+    return res.status(201).json(resultado);
+  } catch (erro) {
+    if (erro.name === "EmailCadastradoError") {
+      return res.status(409).json({ mensagem: erro.message });
+    }
+
+    return tratarErro(res, erro, "Erro ao realizar cadastro");
+  }
+};
+
 export default {
   login,
+  signup,
 };

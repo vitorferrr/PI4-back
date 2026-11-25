@@ -25,7 +25,9 @@ const criar = async (dados) => {
 
    const existente = await Usuario.findOne({ where: { email } });
    if (existente) {
-      throw erroValidacao("Email já cadastrado");
+      const erro = erroValidacao("Email já cadastrado");
+      erro.codigo = "EMAIL_CADASTRADO";
+      throw erro;
     }
 
   const senha_hash = await bcrypt.hash(senha, 10);

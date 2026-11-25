@@ -118,7 +118,7 @@ describe("cadastro de usuário", () => {
         senha: "1234",
         role: "fiscalizador",
       })
-    ).rejects.toThrow("Email já cadastrado");
+    ).rejects.toMatchObject({ message: "Email já cadastrado", codigo: "EMAIL_CADASTRADO" });
 
     expect(Usuario.create).not.toHaveBeenCalled();
   });
