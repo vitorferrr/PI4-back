@@ -1,21 +1,18 @@
 import jwt from "jsonwebtoken";
+import { responderErro } from "./errorHandler.js";
 import authService from "../services/authService.js";
 
 const autenticar = async (req, res, next) => {
   const authorization = req.headers.authorization;
 
   if (!authorization) {
-    return res.status(401).json({
-      mensagem: "Token não informado",
-    });
+    return responderErro(res, 401, "Token não informado");
   }
 
   const [tipo, token] = authorization.split(" ");
 
   if (tipo !== "Bearer" || !token) {
-    return res.status(401).json({
-      mensagem: "Token inválido",
-    });
+    return responderErro(res, 401, "Token inválido");
   }
 
   let payload;
@@ -25,24 +22,18 @@ const autenticar = async (req, res, next) => {
   } catch (erro) {
     console.error(erro);
 
-    return res.status(401).json({
-      mensagem: "Token inválido ou expirado",
-    });
+    return responderErro(res, 401, "Token inválido ou expirado");
   }
 
   if (payload.jti) {
     try {
       if (await authService.tokenRevogado(payload.jti)) {
-        return res.status(401).json({
-          mensagem: "Sessão encerrada",
-        });
+        return responderErro(res, 401, "Sessão encerrada");
       }
     } catch (erro) {
       console.error("Falha ao conferir o token revogado:", erro.message);
 
-      return res.status(503).json({
-        mensagem: "Banco de dados indisponível",
-      });
+      return responderErro(res, 503, "Banco de dados indisponível");
     }
   }
 

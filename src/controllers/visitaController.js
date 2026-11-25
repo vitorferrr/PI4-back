@@ -25,7 +25,7 @@ const transicionar = (transicao, mensagemErro) => async (req, res) => {
 const criar = async (req, res) => {
   try {
     const { fiscalizadores_ids, fiscalizadores, ...dadosVisita } = req.body;
-    const ids = fiscalizadores_ids || fiscalizadores || [];
+    const ids = fiscalizadores_ids ?? fiscalizadores ?? [];
 
     if (!dadosVisita.gestor_id && req.usuario?.id) {
       dadosVisita.gestor_id = req.usuario.id;
