@@ -577,6 +577,7 @@ describe("remover visita", () => {
   it("remove a visita encontrada", async () => {
     const visita = criarVisitaFalsa(dadosVisita);
     Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue(null);
 
     const resultado = await visitaService.remover(10);
 
@@ -588,6 +589,17 @@ describe("remover visita", () => {
     Visita.findByPk.mockResolvedValue(null);
 
     expect(await visitaService.remover(99)).toBeNull();
+  });
+
+  it("recusa a remoção quando o documento da visita já foi gerado", async () => {
+    const visita = criarVisitaFalsa(dadosVisita);
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue({ id: 3 });
+
+    await expect(visitaService.remover(10)).rejects.toThrow(
+      "O documento da visita já foi gerado; a visita não pode mais ser apagada"
+    );
+    expect(visita.destroy).not.toHaveBeenCalled();
   });
 });
 

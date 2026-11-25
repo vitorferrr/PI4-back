@@ -2,6 +2,9 @@ import visitaService from "../services/visitaService.js";
 import tratarErro from "../utils/tratarErro.js";
 import { podeAcessarVisita, responderNaoEncontrada } from "../utils/acessoVisita.js";
 
+const podeGerenciarVisita = (usuario, visita) =>
+  usuario?.role === "admin" || visita.gestor_id === usuario?.id;
+
 const transicionar = (transicao, mensagemErro) => async (req, res) => {
   try {
     const visita = await visitaService.buscarPorId(req.params.id);
@@ -85,10 +88,64 @@ const iniciar = transicionar(
 
 const concluir = transicionar((id) => visitaService.concluir(id), "Erro ao concluir visita");
 
+const atualizar = async (req, res) => {
+  try {
+    const visita = await visitaService.buscarPorId(req.params.id);
+
+    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
+    }
+
+    const { fiscalizadores_ids, fiscalizadores, ...dadosVisita } = req.body ?? {};
+    const ids = fiscalizadores_ids ?? fiscalizadores;
+
+    const visitaAtualizada = await visitaService.atualizar(
+      req.params.id,
+      dadosVisita,
+      ids
+    );
+
+    if (!visitaAtualizada) {
+      return responderNaoEncontrada(res);
+    }
+
+    return res.status(200).json(visitaAtualizada);
+  } catch (erro) {
+    return tratarErro(
+      res,
+      erro,
+      "Erro ao atualizar visita",
+      "Gestor ou fiscalizador informado não existe no sistema."
+    );
+  }
+};
+
+const remover = async (req, res) => {
+  try {
+    const visita = await visitaService.buscarPorId(req.params.id);
+
+    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
+    }
+
+    const visitaRemovida = await visitaService.remover(req.params.id);
+
+    if (!visitaRemovida) {
+      return responderNaoEncontrada(res);
+    }
+
+    return res.status(204).send();
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao apagar visita");
+  }
+};
+
 export default {
   criar,
   listar,
   buscarPorId,
+  atualizar,
+  remover,
   iniciar,
   concluir,
 };

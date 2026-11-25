@@ -321,15 +321,39 @@ const concluir = async (id) => {
 };
 
 const remover = async (id) => {
-  const visita = await Visita.findByPk(id);
+  const transaction = await sequelize.transaction();
 
-  if (!visita) {
-    return null;
+  try {
+    const visita = await Visita.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    const documento = await Documento.findOne({
+      attributes: ["id"],
+      where: { visita_id: id },
+      transaction,
+    });
+
+    if (documento) {
+      throw erroValidacao(
+        "O documento da visita já foi gerado; a visita não pode mais ser apagada"
+      );
+    }
+
+    await visita.destroy({ transaction });
+    await transaction.commit();
+
+    return visita;
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
   }
-
-  await visita.destroy();
-
-  return visita;
 };
 
 export default {

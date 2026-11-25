@@ -37,6 +37,22 @@ router.get(
   visitaController.buscarPorId
 );
 
+router.put(
+  "/:id",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  visitaController.atualizar
+);
+
+router.delete(
+  "/:id",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  visitaController.remover
+);
+
 router.patch(
   "/:id/iniciar",
   autenticar,
