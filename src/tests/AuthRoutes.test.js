@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import jwt from "jsonwebtoken";
@@ -21,7 +22,17 @@ vi.mock("../services/usuarioService.js", () => ({ default: { criar: vi.fn() } })
 
 const SEGREDO = "segredo-de-teste";
 const cadastro = { nome: "Ana", email: "ana@exemplo.com", senha: "senha-forte" };
-const usuarioCriado = { id: 9, nome: "Ana", email: "ana@exemplo.com", role: "fiscalizador", matricula: null };
+const usuarioCriado = {
+  id: 9,
+  nome: "Ana",
+  email: "ana@exemplo.com",
+  role: "fiscalizador",
+  matricula: null,
+  aprovado: false,
+};
+
+const novaSessao = () =>
+  jwt.sign({ id: 9, role: "fiscalizador" }, SEGREDO, { expiresIn: "1h", jwtid: randomUUID() });
 
 let servidor;
 let urlBase;
@@ -62,13 +73,16 @@ beforeEach(() => {
 });
 
 describe("POST /auth/signup", () => {
-  it("cria um fiscalizador sem token e já devolve a sessão", async () => {
+  it("cria um fiscalizador pendente de aprovação e não devolve token", async () => {
     const resposta = await requisitar("/signup", cadastro);
     const corpo = await resposta.json();
 
     expect(resposta.status).toBe(201);
-    expect(corpo.usuario).toEqual({ id: 9, nome: "Ana", email: "ana@exemplo.com", role: "fiscalizador" });
-    expect(jwt.verify(corpo.token, SEGREDO)).toMatchObject({ id: 9, role: "fiscalizador" });
+    expect(corpo).toEqual({
+      mensagem: "Cadastro recebido. Aguarde a aprovação de um administrador para entrar.",
+      usuario: { id: 9, nome: "Ana", email: "ana@exemplo.com", role: "fiscalizador", aprovado: false },
+    });
+    expect(corpo.token).toBeUndefined();
   });
 
   it.each(["admin", "gestor"])("ignora role %s no corpo e cria fiscalizador", async (role) => {
@@ -88,6 +102,7 @@ describe("POST /auth/signup", () => {
       senha: "senha-forte",
       matricula: "123",
       role: "fiscalizador",
+      aprovado: false,
     });
   });
 
@@ -172,7 +187,7 @@ describe("POST /auth/signup", () => {
 
 describe("POST /auth/logout", () => {
   it("encerra a sessão: o mesmo token passa a receber 401", async () => {
-    const { token } = await (await requisitar("/signup", cadastro)).json();
+    const token = novaSessao();
 
     const saida = await requisitar("/logout", undefined, token);
     const repeticao = await requisitar("/logout", undefined, token);
@@ -183,8 +198,8 @@ describe("POST /auth/logout", () => {
   });
 
   it("não encerra outra sessão do mesmo usuário", async () => {
-    const primeira = (await (await requisitar("/signup", cadastro)).json()).token;
-    const segunda = (await (await requisitar("/signup", cadastro)).json()).token;
+    const primeira = novaSessao();
+    const segunda = novaSessao();
 
     await requisitar("/logout", undefined, primeira);
 

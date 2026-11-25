@@ -17,7 +17,7 @@ const erroValidacao = (mensagem) => {
 };
 
 const criar = async (dados) => {
-  const { nome, email, senha, role, matricula } = dados;
+  const { nome, email, senha, role, matricula, aprovado } = dados;
 
   if (!senha) {
     throw erroValidacao("A senha é obrigatória");
@@ -38,17 +38,33 @@ const criar = async (dados) => {
     senha_hash,
     role,
     matricula,
+    ...(aprovado !== undefined && { aprovado }),
   });
 
   return semSenha(usuario);
 };
 
-const listar = async () => {
+const listar = async ({ incluirPendentes = true } = {}) => {
   return await Usuario.findAll({
+    ...(!incluirPendentes && { where: { aprovado: true } }),
     attributes: {
       exclude: ["senha_hash"],
     },
   });
+};
+
+const aprovar = async (id) => {
+  const usuario = await Usuario.findByPk(id);
+
+  if (!usuario) {
+    return null;
+  }
+
+  if (!usuario.aprovado) {
+    await usuario.update({ aprovado: true });
+  }
+
+  return semSenha(usuario);
 };
 
 const buscarPorId = async (id) => {
@@ -103,4 +119,5 @@ export default {
   buscarPorId,
   atualizar,
   remover,
+  aprovar,
 };

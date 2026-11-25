@@ -197,6 +197,44 @@ describe("listar usuários", () => {
     });
     expect(resultado).toEqual(lista);
   });
+
+  it("pode esconder cadastros pendentes", async () => {
+    Usuario.findAll.mockResolvedValue([]);
+
+    await usuarioService.listar({ incluirPendentes: false });
+
+    expect(Usuario.findAll).toHaveBeenCalledWith({
+      where: { aprovado: true },
+      attributes: { exclude: ["senha_hash"] },
+    });
+  });
+});
+
+describe("aprovar usuário", () => {
+  it("marca o cadastro como aprovado e devolve sem a senha", async () => {
+    const usuario = criarUsuarioFalso({ nome: "Ana", aprovado: false, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    const resultado = await usuarioService.aprovar(1);
+
+    expect(usuario.update).toHaveBeenCalledWith({ aprovado: true });
+    expect(resultado).toEqual({ id: 1, nome: "Ana", aprovado: true });
+  });
+
+  it("não grava de novo quem já está aprovado", async () => {
+    const usuario = criarUsuarioFalso({ nome: "Ana", aprovado: true, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await usuarioService.aprovar(1);
+
+    expect(usuario.update).not.toHaveBeenCalled();
+  });
+
+  it("devolve null quando o usuário não existe", async () => {
+    Usuario.findByPk.mockResolvedValue(null);
+
+    expect(await usuarioService.aprovar(99)).toBeNull();
+  });
 });
 
 describe("buscar usuário por id", () => {

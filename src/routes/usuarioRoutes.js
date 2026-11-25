@@ -35,6 +35,14 @@ router.put(
   usuarioController.atualizar
 );
 
+router.patch(
+  "/:id/aprovar",
+  autenticar,
+  autorizar("admin"),
+  validarId,
+  usuarioController.aprovar
+);
+
 router.delete(
   "/:id",
   autenticar,

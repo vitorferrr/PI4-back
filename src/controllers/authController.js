@@ -18,6 +18,10 @@ const login = async (req, res) => {
       return res.status(401).json({ mensagem: erro.message });
     }
 
+    if (erro.name === "CadastroPendenteError") {
+      return res.status(403).json({ mensagem: erro.message });
+    }
+
     console.error(erro);
 
     return res.status(500).json({

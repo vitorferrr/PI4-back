@@ -19,6 +19,13 @@ const erroAutenticacao = () => {
   return erro;
 };
 
+const erroCadastroPendente = () => {
+  const erro = new Error("Cadastro aguardando aprovação de um administrador");
+  erro.name = "CadastroPendenteError";
+
+  return erro;
+};
+
 const erroEmailCadastrado = () => {
   const erro = new Error("Email já cadastrado");
   erro.name = "EmailCadastradoError";
@@ -57,6 +64,10 @@ const login = async (dados = {}) => {
     throw erroAutenticacao();
   }
 
+  if (usuario.aprovado === false) {
+    throw erroCadastroPendente();
+  }
+
   return abrirSessao(usuario);
 };
 
@@ -84,9 +95,19 @@ const signup = async (dados = {}) => {
       senha,
       matricula,
       role: "fiscalizador",
+      aprovado: false,
     });
 
-    return abrirSessao(usuario);
+    return {
+      mensagem: "Cadastro recebido. Aguarde a aprovação de um administrador para entrar.",
+      usuario: {
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        role: usuario.role,
+        aprovado: usuario.aprovado,
+      },
+    };
   } catch (erro) {
     if (erro.codigo === "EMAIL_CADASTRADO" || erro.name === "SequelizeUniqueConstraintError") {
       throw erroEmailCadastrado();

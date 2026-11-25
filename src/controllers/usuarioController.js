@@ -38,7 +38,9 @@ const criar = async (req, res) => {
 
 const listar = async (req, res) => {
   try{
-    const usuario = await usuarioService.listar();
+    const usuario = await usuarioService.listar({
+      incluirPendentes: req.usuario.role === "admin",
+    });
 
     return res.status(200).json(usuario);
   } catch (erro) {
@@ -81,6 +83,22 @@ const remover = async (req, res) => {
   }
 };
 
+const aprovar = async (req, res) => {
+  try {
+    const usuario = await usuarioService.aprovar(req.params.id);
+
+    if (!usuario) {
+      return res.status(404).json({
+        mensagem: "Usuário não encontrado",
+      });
+    }
+
+    return res.status(200).json(usuario);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao aprovar usuário");
+  }
+};
+
 const buscarPorId = async (req, res) => {
   try{
     const usuario = await usuarioService.buscarPorId(req.params.id)
@@ -102,4 +120,5 @@ export default {
   atualizar,
   remover,
   buscarPorId,
+  aprovar,
 };

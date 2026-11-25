@@ -12,6 +12,7 @@ vi.mock("../services/usuarioService.js", () => ({
     buscarPorId: vi.fn(),
     atualizar: vi.fn(),
     remover: vi.fn(),
+    aprovar: vi.fn(),
   },
 }));
 
@@ -62,6 +63,7 @@ const rotas = [
   ["GET", "/1", "buscarPorId", ["admin"], ["gestor", "fiscalizador"]],
   ["PUT", "/1", "atualizar", ["admin"], ["gestor", "fiscalizador"]],
   ["DELETE", "/1", "remover", ["admin"], ["gestor", "fiscalizador"]],
+  ["PATCH", "/1/aprovar", "aprovar", ["admin"], ["gestor", "fiscalizador"]],
 ];
 
 describe.each(rotas)("%s /usuarios%s", (metodo, caminho, funcaoService, permitidos, bloqueados) => {
@@ -159,6 +161,42 @@ describe("GET /usuarios (respostas do controller)", () => {
 
     expect(resposta.status).toBe(200);
     expect(await resposta.json()).toEqual([usuarioFalso]);
+  });
+
+  it.each([
+    ["admin", true],
+    ["gestor", false],
+  ])("%s vê cadastros pendentes: %s", async (role, incluirPendentes) => {
+    usuarioService.listar.mockResolvedValue([]);
+
+    await requisitar("GET", "", role);
+
+    expect(usuarioService.listar).toHaveBeenCalledWith({ incluirPendentes });
+  });
+});
+
+describe("PATCH /usuarios/:id/aprovar (respostas do controller)", () => {
+  it("responde 200 com o usuário aprovado", async () => {
+    const resposta = await requisitar("PATCH", "/1/aprovar", "admin");
+
+    expect(resposta.status).toBe(200);
+    expect(usuarioService.aprovar).toHaveBeenCalledWith("1");
+  });
+
+  it("responde 404 quando o usuário não existe", async () => {
+    usuarioService.aprovar.mockResolvedValue(null);
+
+    const resposta = await requisitar("PATCH", "/99/aprovar", "admin");
+
+    expect(resposta.status).toBe(404);
+    expect(await resposta.json()).toEqual({ mensagem: "Usuário não encontrado" });
+  });
+
+  it("responde 400 para id inválido sem chamar o service", async () => {
+    const resposta = await requisitar("PATCH", "/abc/aprovar", "admin");
+
+    expect(resposta.status).toBe(400);
+    expect(usuarioService.aprovar).not.toHaveBeenCalled();
   });
 });
 

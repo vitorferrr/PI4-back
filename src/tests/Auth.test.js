@@ -83,6 +83,34 @@ describe("login (authService)", () => {
     ).rejects.toMatchObject({ name: "AutenticacaoError" });
   });
 
+  it("bloqueia o login de cadastro ainda não aprovado", async () => {
+    Usuario.findOne.mockResolvedValue({
+      id: 1,
+      role: "fiscalizador",
+      aprovado: false,
+      senha_hash: await bcrypt.hash("senha-forte", 10),
+    });
+
+    await expect(
+      authService.login({ email: "bia@exemplo.com", senha: "senha-forte" })
+    ).rejects.toMatchObject({
+      name: "CadastroPendenteError",
+      message: "Cadastro aguardando aprovação de um administrador",
+    });
+  });
+
+  it("não revela cadastro pendente para quem erra a senha", async () => {
+    Usuario.findOne.mockResolvedValue({
+      id: 1,
+      aprovado: false,
+      senha_hash: await bcrypt.hash("senha-forte", 10),
+    });
+
+    await expect(
+      authService.login({ email: "bia@exemplo.com", senha: "errada" })
+    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+  });
+
   it("rejeita quando a senha está errada", async () => {
     Usuario.findOne.mockResolvedValue({
       id: 1,
@@ -306,6 +334,20 @@ describe("authController.login", () => {
     const req = { body: { email: "bia@exemplo.com", senha: "123" } };
     const res = criarRes();
 
+    vi.spyOn(authService, "login").mockRejectedValueOnce(
+      Object.assign(new Error("Cadastro aguardando aprovação de um administrador"), {
+        name: "CadastroPendenteError",
+      })
+    );
+
+    await authController.login(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      mensagem: "Cadastro aguardando aprovação de um administrador",
+    });
+
+    vi.clearAllMocks();
     vi.spyOn(authService, "login").mockRejectedValueOnce(new Error("Erro de banco"));
 
     await authController.login(req, res);
