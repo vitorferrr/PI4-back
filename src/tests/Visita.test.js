@@ -143,7 +143,7 @@ describe("criar visita", () => {
 
     await visitaService.criar(dadosVisita, [2]);
 
-    expect(Usuario.findByPk).toHaveBeenCalledWith(2, { attributes: ["id", "role"] });
+    expect(Usuario.findByPk).toHaveBeenCalledWith(2, { attributes: ["id", "role", "aprovado"] });
   });
 
   it.each([
@@ -156,6 +156,16 @@ describe("criar visita", () => {
     await expect(visitaService.criar(dadosVisita, [3])).rejects.toMatchObject({
       name: "ValidacaoError",
       message: "O usuário informado não é um fiscalizador cadastrado",
+    });
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejeita fiscalizador com cadastro ainda não aprovado", async () => {
+    Usuario.findByPk.mockResolvedValue({ id: 3, role: "fiscalizador", aprovado: false });
+
+    await expect(visitaService.criar(dadosVisita, [3])).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "O fiscalizador informado ainda não foi aprovado",
     });
     expect(sequelize.transaction).not.toHaveBeenCalled();
   });

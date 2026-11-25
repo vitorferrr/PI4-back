@@ -45,11 +45,15 @@ const validarFiscalizadores = async (fiscalizadoresIds) => {
 
   const [id] = fiscalizadoresIds;
   const fiscal = Number.isInteger(id) && id > 0
-    ? await Usuario.findByPk(id, { attributes: ["id", "role"] })
+    ? await Usuario.findByPk(id, { attributes: ["id", "role", "aprovado"] })
     : null;
 
   if (fiscal?.role !== "fiscalizador") {
     throw erroValidacao("O usuário informado não é um fiscalizador cadastrado");
+  }
+
+  if (fiscal.aprovado === false) {
+    throw erroValidacao("O fiscalizador informado ainda não foi aprovado");
   }
 };
 

@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken";
 import adminRoutes from "../routes/adminRoutes.js";
 import adminService from "../services/adminService.js";
 
+vi.mock("../services/authService.js", () => ({ default: { tokenRevogado: vi.fn(async () => false) } }));
 vi.mock("../services/adminService.js", () => ({
   default: {
     obterDadosGerais: vi.fn(),

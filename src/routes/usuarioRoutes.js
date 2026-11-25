@@ -6,6 +6,7 @@ import validarId from "../middlewares/validarIdMiddleware.js";
 import {
   validarAtualizacaoUsuario,
   validarCriacaoUsuario,
+  validarListagemUsuarios,
 } from "../middlewares/validationMiddleware.js";
 
 const router = Router();
@@ -23,6 +24,7 @@ router.get(
   "/",
   autenticar,
   autorizar("admin", "gestor"),
+  validarListagemUsuarios,
   usuarioController.listar
 );
 
@@ -33,6 +35,22 @@ router.put(
   validarId,
   validarAtualizacaoUsuario,
   usuarioController.atualizar
+);
+
+router.patch(
+  "/:id/aprovar",
+  autenticar,
+  autorizar("admin"),
+  validarId,
+  usuarioController.aprovar
+);
+
+router.patch(
+  "/:id/reprovar",
+  autenticar,
+  autorizar("admin"),
+  validarId,
+  usuarioController.reprovar
 );
 
 router.delete(

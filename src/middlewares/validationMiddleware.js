@@ -74,6 +74,17 @@ const finalizarValidacao = (res, next, erros) => {
 
 export { validarListaRespostas };
 
+export const validarListagemUsuarios = (req, res, next) => {
+  const { aprovado } = req.query ?? {};
+  const erros = [];
+
+  if (aprovado !== undefined && aprovado !== "true" && aprovado !== "false") {
+    erros.push("aprovado deve ser true ou false");
+  }
+
+  return finalizarValidacao(res, next, erros);
+};
+
 export const validarCriacaoUsuario = (req, res, next) => {
   if (!ehObjeto(req.body)) {
     return responderErro(res, 400, "Dados inválidos", [

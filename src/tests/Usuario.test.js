@@ -118,9 +118,25 @@ describe("cadastro de usuário", () => {
         senha: "1234",
         role: "fiscalizador",
       })
-    ).rejects.toThrow("Email já cadastrado");
+    ).rejects.toMatchObject({ message: "Email já cadastrado", codigo: "EMAIL_CADASTRADO" });
 
     expect(Usuario.create).not.toHaveBeenCalled();
+  });
+
+  it("confere e grava o email sem espaços e em minúsculas", async () => {
+    Usuario.findOne.mockResolvedValue(null);
+    Usuario.create.mockImplementation(async (dados) => criarUsuarioFalso(dados));
+
+    const resultado = await usuarioService.criar({
+      nome: "Bia",
+      email: " Bia@Exemplo.COM ",
+      senha: "1234",
+      role: "fiscalizador",
+    });
+
+    expect(Usuario.findOne).toHaveBeenCalledWith({ where: { email: "bia@exemplo.com" } });
+    expect(Usuario.create).toHaveBeenCalledWith(expect.objectContaining({ email: "bia@exemplo.com" }));
+    expect(resultado.email).toBe("bia@exemplo.com");
   });
 });
 
@@ -197,6 +213,83 @@ describe("listar usuários", () => {
     });
     expect(resultado).toEqual(lista);
   });
+
+  it.each([true, false])("filtra por aprovado = %s", async (aprovado) => {
+    Usuario.findAll.mockResolvedValue([]);
+
+    await usuarioService.listar({ aprovado });
+
+    expect(Usuario.findAll).toHaveBeenCalledWith({
+      where: { aprovado },
+      attributes: { exclude: ["senha_hash"] },
+    });
+  });
+});
+
+describe("aprovar usuário", () => {
+  it("marca o cadastro como aprovado e devolve sem a senha", async () => {
+    const usuario = criarUsuarioFalso({ nome: "Ana", aprovado: false, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    const resultado = await usuarioService.aprovar(1);
+
+    expect(usuario.update).toHaveBeenCalledWith({ aprovado: true });
+    expect(resultado).toEqual({ id: 1, nome: "Ana", aprovado: true });
+  });
+
+  it("não grava de novo quem já está aprovado", async () => {
+    const usuario = criarUsuarioFalso({ nome: "Ana", aprovado: true, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await usuarioService.aprovar(1);
+
+    expect(usuario.update).not.toHaveBeenCalled();
+  });
+
+  it("devolve null quando o usuário não existe", async () => {
+    Usuario.findByPk.mockResolvedValue(null);
+
+    expect(await usuarioService.aprovar(99)).toBeNull();
+  });
+});
+
+describe("reprovar usuário", () => {
+  it("bloqueia o fiscalizador sem apagar e devolve sem a senha", async () => {
+    const usuario = criarUsuarioFalso({ nome: "Ana", role: "fiscalizador", aprovado: true, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    const resultado = await usuarioService.reprovar(1);
+
+    expect(usuario.update).toHaveBeenCalledWith({ aprovado: false });
+    expect(usuario.destroy).not.toHaveBeenCalled();
+    expect(resultado).toEqual({ id: 1, nome: "Ana", role: "fiscalizador", aprovado: false });
+  });
+
+  it("não grava de novo quem já está reprovado", async () => {
+    const usuario = criarUsuarioFalso({ role: "fiscalizador", aprovado: false, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await usuarioService.reprovar(1);
+
+    expect(usuario.update).not.toHaveBeenCalled();
+  });
+
+  it.each(["admin", "gestor"])("não reprova %s", async (role) => {
+    const usuario = criarUsuarioFalso({ role, aprovado: true, senha_hash: "hash" });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await expect(usuarioService.reprovar(1)).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Só cadastros de fiscalizador podem ser reprovados",
+    });
+    expect(usuario.update).not.toHaveBeenCalled();
+  });
+
+  it("devolve null quando o usuário não existe", async () => {
+    Usuario.findByPk.mockResolvedValue(null);
+
+    expect(await usuarioService.reprovar(99)).toBeNull();
+  });
 });
 
 describe("buscar usuário por id", () => {
@@ -232,6 +325,15 @@ describe("atualizar usuário", () => {
     expect(usuario.update).toHaveBeenCalledWith({ nome: "Beatriz" });
     expect(resultado.nome).toBe("Beatriz");
     expect(resultado.senha_hash).toBeUndefined();
+  });
+
+  it("grava o email novo sem espaços e em minúsculas", async () => {
+    const usuario = criarUsuarioFalso({ ...dadosValidos });
+    Usuario.findByPk.mockResolvedValue(usuario);
+
+    await usuarioService.atualizar(1, { email: " Nova@Exemplo.com" });
+
+    expect(usuario.update).toHaveBeenCalledWith({ email: "nova@exemplo.com" });
   });
 
   it("deve atualizar a matrícula", async () => {

@@ -1,4 +1,5 @@
 import authService from "../services/authService.js";
+import tratarErro from "../utils/tratarErro.js";
 
 const login = async (req, res) => {
   const { email, senha } = req.body ?? {};
@@ -17,6 +18,10 @@ const login = async (req, res) => {
       return res.status(401).json({ mensagem: erro.message });
     }
 
+    if (erro.name === "CadastroPendenteError") {
+      return res.status(403).json({ mensagem: erro.message });
+    }
+
     console.error(erro);
 
     return res.status(500).json({
@@ -25,6 +30,32 @@ const login = async (req, res) => {
   }
 };
 
+const signup = async (req, res) => {
+  try {
+    const resultado = await authService.signup(req.body);
+
+    return res.status(201).json(resultado);
+  } catch (erro) {
+    if (erro.name === "EmailCadastradoError") {
+      return res.status(409).json({ mensagem: erro.message });
+    }
+
+    return tratarErro(res, erro, "Erro ao realizar cadastro");
+  }
+};
+
+const logout = async (req, res) => {
+  try {
+    await authService.logout(req.usuario);
+
+    return res.status(204).send();
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao encerrar a sessão");
+  }
+};
+
 export default {
   login,
+  signup,
+  logout,
 };
