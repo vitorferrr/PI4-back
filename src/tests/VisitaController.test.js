@@ -296,12 +296,16 @@ describe("GET /visitas", () => {
   });
 });
 
-describe.each([["iniciar"], ["concluir"]])("PATCH /visitas/:id/%s", (acao) => {
+// O iniciar exige a localização do fiscal (iniciarVisitaSchema); o concluir não tem corpo.
+describe.each([
+  ["iniciar", { latitude: -8.1127, longitude: -35.0147 }],
+  ["concluir", undefined],
+])("PATCH /visitas/:id/%s", (acao, corpo) => {
   it("aplica a transição para o fiscalizador associado", async () => {
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
     visitaService[acao].mockResolvedValue({ id: 10 });
 
-    const resposta = await requisitar("PATCH", `/10/${acao}`);
+    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 5, corpo);
 
     expect(resposta.status).toBe(200);
     expect(visitaService[acao].mock.calls[0][0]).toBe("10");
@@ -310,7 +314,7 @@ describe.each([["iniciar"], ["concluir"]])("PATCH /visitas/:id/%s", (acao) => {
   it("responde 404 e não altera a visita para fiscalizador não associado", async () => {
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
 
-    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 6);
+    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 6, corpo);
 
     expect(resposta.status).toBe(404);
     expect(visitaService[acao]).not.toHaveBeenCalled();
@@ -319,7 +323,7 @@ describe.each([["iniciar"], ["concluir"]])("PATCH /visitas/:id/%s", (acao) => {
   it("responde 404 quando a visita não existe", async () => {
     visitaService.buscarPorId.mockResolvedValue(null);
 
-    const resposta = await requisitar("PATCH", `/99/${acao}`);
+    const resposta = await requisitar("PATCH", `/99/${acao}`, "fiscalizador", 5, corpo);
 
     expect(resposta.status).toBe(404);
     expect(visitaService[acao]).not.toHaveBeenCalled();
@@ -329,7 +333,7 @@ describe.each([["iniciar"], ["concluir"]])("PATCH /visitas/:id/%s", (acao) => {
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
     visitaService[acao].mockResolvedValue(null);
 
-    const resposta = await requisitar("PATCH", `/10/${acao}`);
+    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 5, corpo);
 
     expect(resposta.status).toBe(404);
   });
@@ -340,7 +344,7 @@ describe.each([["iniciar"], ["concluir"]])("PATCH /visitas/:id/%s", (acao) => {
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
     visitaService[acao].mockRejectedValue(erro);
 
-    const resposta = await requisitar("PATCH", `/10/${acao}`);
+    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 5, corpo);
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
@@ -397,13 +401,7 @@ describe("PATCH /visitas/:id/iniciar com localização", () => {
     expect(visitaService.iniciar).toHaveBeenCalledWith("10", coordenadas);
   });
 
-  it("responde 400 com os erros quando a localização é inválida", async () => {
-    const erro = new Error("A latitude deve ser um número entre -90 e 90");
-    erro.name = "ValidacaoError";
-    erro.errors = [{ message: "A latitude deve ser um número entre -90 e 90" }];
-    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
-    visitaService.iniciar.mockRejectedValue(erro);
-
+  it("responde 400 pelo schema quando a localização é inválida, sem chamar o service", async () => {
     const resposta = await requisitar("PATCH", "/10/iniciar", "fiscalizador", 5, {
       latitude: 200,
       longitude: -35,
@@ -412,8 +410,20 @@ describe("PATCH /visitas/:id/iniciar com localização", () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: "A latitude deve ser um número entre -90 e 90",
-      erros: ["A latitude deve ser um número entre -90 e 90"],
+      erros: ["latitude: A latitude deve ser um número entre -90 e 90"],
     });
+    expect(visitaService.buscarPorId).not.toHaveBeenCalled();
+    expect(visitaService.iniciar).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando a localização não é enviada", async () => {
+    const resposta = await requisitar("PATCH", "/10/iniciar", "fiscalizador", 5, {});
+
+    expect(resposta.status).toBe(400);
+    expect((await resposta.json()).erros).toEqual([
+      "latitude: A latitude deve ser um número entre -90 e 90",
+      "longitude: A longitude deve ser um número entre -180 e 180",
+    ]);
   });
 });
 

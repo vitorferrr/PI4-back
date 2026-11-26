@@ -10,12 +10,15 @@ import validarId, {
 } from "../middlewares/validarIdMiddleware.js";
 import validate from "../middlewares/validate.js";
 import {
+  adicionarFiscalizadorSchema,
   atualizarRespostaSchema,
   atualizarVisitaSchema,
   criarVisitaSchema,
+  iniciarVisitaSchema,
   listarVisitasSchema,
   observacoesVisitaSchema,
   salvarRespostasSchema,
+  substituirFiscalizadoresSchema,
 } from "../middlewares/validationSchemas.js";
 
 const router = Router();
@@ -74,6 +77,7 @@ router.post(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
+  validate(adicionarFiscalizadorSchema),
   visitaController.adicionarFiscalizador
 );
 
@@ -82,6 +86,7 @@ router.put(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
+  validate(substituirFiscalizadoresSchema),
   visitaController.substituirFiscalizadores
 );
 
@@ -99,6 +104,7 @@ router.patch(
   autenticar,
   autorizar("fiscalizador"),
   validarId,
+  validate(iniciarVisitaSchema),
   visitaController.iniciar
 );
 

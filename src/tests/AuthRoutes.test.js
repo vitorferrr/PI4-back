@@ -110,21 +110,20 @@ describe("POST /auth/signup", () => {
     });
   });
 
+  const OBRIGATORIOS = "Nome, email e senha são obrigatórios";
+
   it.each([
-    [{ email: "ana@exemplo.com", senha: "senha-forte" }],
-    [{ nome: "Ana", senha: "senha-forte" }],
-    [{ nome: "Ana", email: "ana@exemplo.com" }],
-    [{ nome: "   ", email: "ana@exemplo.com", senha: "senha-forte" }],
-    [{ nome: 10, email: "ana@exemplo.com", senha: "senha-forte" }],
-    [undefined],
-  ])("responde 400 quando falta nome, email ou senha (%#)", async (corpo) => {
+    [{ email: "ana@exemplo.com", senha: "senha-forte" }, [`nome: ${OBRIGATORIOS}`]],
+    [{ nome: "Ana", senha: "senha-forte" }, [`email: ${OBRIGATORIOS}`]],
+    [{ nome: "Ana", email: "ana@exemplo.com" }, [`senha: ${OBRIGATORIOS}`]],
+    [{ nome: "   ", email: "ana@exemplo.com", senha: "senha-forte" }, [`nome: ${OBRIGATORIOS}`]],
+    [{ nome: 10, email: "ana@exemplo.com", senha: "senha-forte" }, [`nome: ${OBRIGATORIOS}`]],
+    [undefined, [`nome: ${OBRIGATORIOS}`, `email: ${OBRIGATORIOS}`, `senha: ${OBRIGATORIOS}`]],
+  ])("responde 400 quando falta nome, email ou senha (%#)", async (corpo, erros) => {
     const resposta = await requisitar("/signup", corpo);
 
     expect(resposta.status).toBe(400);
-    expect(await resposta.json()).toEqual({
-      mensagem: "Nome, email e senha são obrigatórios",
-      erros: ["Nome, email e senha são obrigatórios"],
-    });
+    expect(await resposta.json()).toEqual({ mensagem: OBRIGATORIOS, erros });
     expect(usuarioService.criar).not.toHaveBeenCalled();
   });
 
@@ -134,7 +133,10 @@ describe("POST /auth/signup", () => {
       const resposta = await requisitar("/signup", { ...cadastro, senha });
 
       expect(resposta.status).toBe(400);
-      expect((await resposta.json()).erros).toEqual(["A senha deve ter entre 8 e 72 caracteres"]);
+      expect(await resposta.json()).toEqual({
+        mensagem: "A senha deve ter entre 8 e 72 caracteres",
+        erros: ["senha: A senha deve ter entre 8 e 72 caracteres"],
+      });
       expect(usuarioService.criar).not.toHaveBeenCalled();
     }
   );
@@ -186,6 +188,28 @@ describe("POST /auth/signup", () => {
     expect(resposta.status).toBe(500);
     expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     consoleError.mockRestore();
+  });
+});
+
+describe("POST /auth/login (loginSchema)", () => {
+  it.each([[{}], [{ email: "ana@exemplo.com" }], [{ senha: "x" }], [{ email: "", senha: "x" }], [undefined]])(
+    "responde 400 sem chegar no service quando falta email ou senha (%#)",
+    async (corpo) => {
+      const resposta = await requisitar("/login", corpo);
+
+      expect(resposta.status).toBe(400);
+      expect((await resposta.json()).mensagem).toBe("Email e senha são obrigatórios");
+    }
+  );
+
+  it("com email e senha preenchidos, deixa o authService responder 401", async () => {
+    const { default: models } = await import("../models/index.js");
+    models.Usuario.findOne.mockResolvedValue(null);
+
+    const resposta = await requisitar("/login", { email: "ana@exemplo.com", senha: "errada" });
+
+    expect(resposta.status).toBe(401);
+    expect(await resposta.json()).toEqual({ mensagem: "Email ou senha inválidos" });
   });
 });
 

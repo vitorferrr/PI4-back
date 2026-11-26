@@ -1,6 +1,5 @@
 import AppError from "../utils/appError.js";
 
-// Maior valor aceito por uma coluna INTEGER do Postgres.
 const ID_MAXIMO = 2147483647;
 
 export const validarParametroId = (nomeParametro = "id") => (req, res, next) => {

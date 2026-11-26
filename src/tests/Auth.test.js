@@ -388,17 +388,6 @@ describe("middleware autorizar", () => {
 });
 
 describe("authController.login", () => {
-  it("lança AppError 400 se email ou senha não forem fornecidos", async () => {
-    const req = { body: {} };
-    const res = criarRes();
-
-    await expect(authController.login(req, res)).rejects.toMatchObject({
-      statusCode: 400,
-      message: "Email e senha são obrigatórios",
-    });
-    expect(res.status).not.toHaveBeenCalled();
-  });
-
   it("retorna 200 e o resultado quando o login for bem-sucedido", async () => {
     const req = { body: { email: "bia@exemplo.com", senha: "123" } };
     const res = criarRes();

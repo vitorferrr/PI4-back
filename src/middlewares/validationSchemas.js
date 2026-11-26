@@ -74,7 +74,6 @@ const idSchema = (mensagem) =>
     .min(1, { error: mensagem })
     .max(ID_MAXIMO, { error: mensagem });
 
-// Um erro só para a lista inteira (e não um por item), como antes.
 const listaIdsSchema = () =>
   z
     .array(z.unknown(), { error: MENSAGEM_FISCALIZADORES })
@@ -198,10 +197,7 @@ export const salvarRespostasSchema = z.object({
   }),
 });
 
-/**
- * Schema das observações livres da visita (PATCH /visitas/:id/observacoes).
- * Aceita texto (até 5000 caracteres, sem contar os espaços das pontas) ou null.
- */
+
 export const observacoesVisitaSchema = z.object({
   body: corpoSchema({
     observacoes_livres: z
@@ -210,5 +206,125 @@ export const observacoesVisitaSchema = z.object({
         error: `observacoes_livres deve ter no máximo ${TAMANHO_MAXIMO_OBSERVACOES} caracteres`,
       })
       .nullable(),
+  }),
+});
+
+const MENSAGEM_LOGIN = "Email e senha são obrigatórios";
+const MENSAGEM_SIGNUP = "Nome, email e senha são obrigatórios";
+const MENSAGEM_UM_FISCAL = "A visita deve ter exatamente um agente fiscalizador";
+const TIPOS_RESPOSTA = ["sim_nao", "numero", "data", "texto"];
+const SENHA_SIGNUP_MINIMA = 8;
+const SENHA_SIGNUP_MAXIMA = 72;
+
+const obrigatorioSchema = (mensagem) =>
+  z.string({ error: mensagem }).min(1, { error: mensagem });
+
+
+export const loginSchema = z.object({
+  body: corpoSchema(
+    {
+      email: obrigatorioSchema(MENSAGEM_LOGIN),
+      senha: obrigatorioSchema(MENSAGEM_LOGIN),
+    },
+    MENSAGEM_LOGIN
+  ),
+});
+
+
+export const signupSchema = z.object({
+  body: corpoSchema(
+    {
+      nome: textoPreenchidoSchema(MENSAGEM_SIGNUP),
+      email: textoPreenchidoSchema(MENSAGEM_SIGNUP),
+      senha: textoPreenchidoSchema(MENSAGEM_SIGNUP),
+      matricula: z.string({ error: "A matrícula deve ser um texto" }).nullish(),
+    },
+    MENSAGEM_SIGNUP
+  ).refine(
+    ({ senha }) =>
+      senha.length >= SENHA_SIGNUP_MINIMA && Buffer.byteLength(senha) <= SENHA_SIGNUP_MAXIMA,
+    {
+      path: ["senha"],
+      error: `A senha deve ter entre ${SENHA_SIGNUP_MINIMA} e ${SENHA_SIGNUP_MAXIMA} caracteres`,
+      when: (payload) => payload.issues.length === 0,
+    }
+  ),
+});
+
+const perguntaCampos = {
+  texto: textoPreenchidoSchema("O texto da pergunta é obrigatório"),
+  tipo_resposta: z.enum(TIPOS_RESPOSTA, {
+    error: `tipo_resposta deve ser um dos valores: ${TIPOS_RESPOSTA.join(", ")}`,
+  }),
+  ordem: z
+    .number({ error: "ordem deve ser um número inteiro positivo" })
+    .int({ error: "ordem deve ser um número inteiro positivo" })
+    .min(1, { error: "ordem deve ser um número inteiro positivo" }),
+};
+
+
+export const criarPerguntaSchema = z.object({
+  body: corpoSchema(perguntaCampos, "Dados da pergunta inválidos"),
+});
+
+export const atualizarPerguntaSchema = z.object({
+  body: corpoSchema(
+    {
+      texto: perguntaCampos.texto.optional(),
+      tipo_resposta: perguntaCampos.tipo_resposta.optional(),
+      ordem: perguntaCampos.ordem.optional(),
+    },
+    "Dados da pergunta inválidos"
+  ).refine(
+    (corpo) => ["texto", "tipo_resposta", "ordem"].some((campo) => corpo[campo] !== undefined),
+    { error: MENSAGEM_CORPO_VAZIO }
+  ),
+});
+
+
+export const adicionarFiscalizadorSchema = z.object({
+  body: corpoSchema({}).superRefine((corpo, ctx) => {
+    const id = corpo.fiscalizadorId ?? corpo.fiscalizador_id;
+
+    if (!idSchema("").safeParse(id).success) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["fiscalizadorId"],
+        message: "fiscalizadorId deve ser um número inteiro positivo",
+      });
+    }
+  }),
+});
+
+
+export const substituirFiscalizadoresSchema = z.object({
+  body: corpoSchema({}).superRefine((corpo, ctx) => {
+    const lista = corpo.fiscalizadoresIds ?? corpo.fiscalizadores_ids;
+    const caminho = ["fiscalizadoresIds"];
+
+    if (!Array.isArray(lista) || new Set(lista).size !== 1) {
+      ctx.addIssue({ code: "custom", path: caminho, message: MENSAGEM_UM_FISCAL });
+      return;
+    }
+
+    if (!lista.every((id) => idSchema("").safeParse(id).success)) {
+      ctx.addIssue({ code: "custom", path: caminho, message: MENSAGEM_FISCALIZADORES });
+    }
+  }),
+});
+
+export const iniciarVisitaSchema = z.object({
+  body: corpoSchema({
+    latitude: coordenadaSchema(90, "A latitude deve ser um número entre -90 e 90"),
+    longitude: coordenadaSchema(180, "A longitude deve ser um número entre -180 e 180"),
+  }),
+});
+
+export const registrarAssinaturaSchema = z.object({
+  body: corpoSchema({
+    assinante_tipo: z.enum(["fiscalizador", "denunciado"], {
+      error: "O tipo de assinante deve ser fiscalizador ou denunciado",
+    }),
+    recusou: z.boolean({ error: "O campo recusou deve ser verdadeiro ou falso" }).nullish(),
   }),
 });

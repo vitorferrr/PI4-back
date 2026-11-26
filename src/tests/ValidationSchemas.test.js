@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  adicionarFiscalizadorSchema,
+  atualizarPerguntaSchema,
+  criarPerguntaSchema,
+  iniciarVisitaSchema,
+  loginSchema,
+  observacoesVisitaSchema,
+  registrarAssinaturaSchema,
+  signupSchema,
+  substituirFiscalizadoresSchema,
   atualizarRespostaSchema,
   atualizarUsuarioSchema,
   atualizarVisitaSchema,
@@ -142,6 +151,100 @@ describe("schemas de respostas", () => {
     ).toBe(true);
     expect(validar(salvarRespostasSchema, { body: { respostas: [] } }).mensagens).toEqual([
       "Envie ao menos uma resposta em 'respostas'",
+    ]);
+  });
+});
+
+describe("observacoesVisitaSchema", () => {
+  it("aceita texto ou null e recusa texto longo demais", () => {
+    expect(validar(observacoesVisitaSchema, { body: { observacoes_livres: null } }).ok).toBe(true);
+    expect(
+      validar(observacoesVisitaSchema, { body: { observacoes_livres: "a".repeat(5001) } }).mensagens
+    ).toEqual(["observacoes_livres deve ter no máximo 5000 caracteres"]);
+  });
+});
+
+describe("loginSchema e signupSchema", () => {
+  it("login exige email e senha preenchidos", () => {
+    expect(validar(loginSchema, { body: { email: "a@b.com", senha: "x" } }).ok).toBe(true);
+    expect(validar(loginSchema, { body: { email: "a@b.com" } }).mensagens).toEqual([
+      "Email e senha são obrigatórios",
+    ]);
+  });
+
+  it("signup avisa primeiro o campo faltando e só depois o tamanho da senha", () => {
+    expect(validar(signupSchema, { body: { nome: "", email: "a@b.com", senha: "1" } }).mensagens).toEqual([
+      "Nome, email e senha são obrigatórios",
+    ]);
+    expect(validar(signupSchema, { body: { nome: "Ana", email: "a@b.com", senha: "1234567" } }).mensagens).toEqual([
+      "A senha deve ter entre 8 e 72 caracteres",
+    ]);
+  });
+
+  it("signup aceita matrícula em texto ou nula e recusa número", () => {
+    const corpo = { nome: "Ana", email: "a@b.com", senha: "senha-forte" };
+    expect(validar(signupSchema, { body: { ...corpo, matricula: null } }).ok).toBe(true);
+    expect(validar(signupSchema, { body: { ...corpo, matricula: 1 } }).mensagens).toEqual([
+      "A matrícula deve ser um texto",
+    ]);
+  });
+});
+
+describe("schemas de pergunta", () => {
+  it("criação exige texto, tipo_resposta conhecido e ordem positiva", () => {
+    expect(
+      validar(criarPerguntaSchema, { body: { texto: "Tem alvará?", tipo_resposta: "sim_nao", ordem: 1 } }).ok
+    ).toBe(true);
+    expect(validar(criarPerguntaSchema, { body: { texto: "", tipo_resposta: "x", ordem: 0 } }).mensagens).toEqual([
+      "O texto da pergunta é obrigatório",
+      "tipo_resposta deve ser um dos valores: sim_nao, numero, data, texto",
+      "ordem deve ser um número inteiro positivo",
+    ]);
+  });
+
+  it("atualização exige ao menos um dos campos da pergunta", () => {
+    expect(validar(atualizarPerguntaSchema, { body: { ordem: 2 } }).ok).toBe(true);
+    expect(validar(atualizarPerguntaSchema, { body: { outro: 1 } }).mensagens).toEqual([
+      "Informe ao menos um campo para atualizar",
+    ]);
+  });
+});
+
+describe("schemas de fiscalizadores da visita", () => {
+  it("POST aceita fiscalizadorId ou fiscalizador_id", () => {
+    expect(validar(adicionarFiscalizadorSchema, { body: { fiscalizadorId: 3 } }).ok).toBe(true);
+    expect(validar(adicionarFiscalizadorSchema, { body: { fiscalizador_id: 3 } }).ok).toBe(true);
+    expect(validar(adicionarFiscalizadorSchema, { body: {} }).mensagens).toEqual([
+      "fiscalizadorId deve ser um número inteiro positivo",
+    ]);
+  });
+
+  it("PUT exige exatamente um fiscal válido", () => {
+    expect(validar(substituirFiscalizadoresSchema, { body: { fiscalizadores_ids: [3] } }).ok).toBe(true);
+    expect(validar(substituirFiscalizadoresSchema, { body: { fiscalizadoresIds: [3, 4] } }).mensagens).toEqual([
+      "A visita deve ter exatamente um agente fiscalizador",
+    ]);
+    expect(validar(substituirFiscalizadoresSchema, { body: { fiscalizadoresIds: ["a"] } }).mensagens).toEqual([
+      "fiscalizadores_ids deve ser uma lista de IDs inteiros positivos",
+    ]);
+  });
+});
+
+describe("iniciarVisitaSchema e registrarAssinaturaSchema", () => {
+  it("iniciar exige latitude e longitude válidas", () => {
+    expect(validar(iniciarVisitaSchema, { body: { latitude: -8.1, longitude: -35 } }).ok).toBe(true);
+    expect(validar(iniciarVisitaSchema, { body: { latitude: 91, longitude: -35 } }).mensagens).toEqual([
+      "A latitude deve ser um número entre -90 e 90",
+    ]);
+  });
+
+  it("assinatura confere o tipo de assinante e o recusou", () => {
+    expect(validar(registrarAssinaturaSchema, { body: { assinante_tipo: "denunciado", recusou: true } }).ok).toBe(true);
+    expect(
+      validar(registrarAssinaturaSchema, { body: { assinante_tipo: "x", recusou: "sim" } }).mensagens
+    ).toEqual([
+      "O tipo de assinante deve ser fiscalizador ou denunciado",
+      "O campo recusou deve ser verdadeiro ou falso",
     ]);
   });
 });

@@ -3,6 +3,11 @@ import questionarioController from "../controllers/questionarioController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 import validarId from "../middlewares/validarIdMiddleware.js";
+import validate from "../middlewares/validate.js";
+import {
+  atualizarPerguntaSchema,
+  criarPerguntaSchema,
+} from "../middlewares/validationSchemas.js";
 
 const router = Router();
 
@@ -25,6 +30,7 @@ router.post(
   "/",
   autenticar,
   autorizar("admin"),
+  validate(criarPerguntaSchema),
   questionarioController.criar
 );
 
@@ -33,6 +39,7 @@ router.put(
   autenticar,
   autorizar("admin"),
   validarId,
+  validate(atualizarPerguntaSchema),
   questionarioController.atualizar
 );
 
