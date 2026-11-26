@@ -23,6 +23,25 @@ const gerar = async (req, res) => {
   }
 };
 
+const linkPdf = async (req, res) => {
+  try {
+    const resultado = await documentoService.gerarLinkPdf(req.params.id);
+
+    if (!resultado) {
+      return res.status(404).json({ mensagem: "Documento não encontrado" });
+    }
+
+    if (!resultado.gerado) {
+      return res.status(409).json({ mensagem: "O PDF deste documento ainda não foi gerado" });
+    }
+
+    return res.status(200).json({ url: resultado.url, expira_em: resultado.expira_em });
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao abrir o PDF");
+  }
+};
+
 export default {
   gerar,
+  linkPdf,
 };

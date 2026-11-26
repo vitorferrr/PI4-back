@@ -88,6 +88,31 @@ describe("inicialização na Vercel", () => {
     }
   );
 
+  it("tenta conectar de novo na próxima requisição depois de uma falha", async () => {
+    sync.mockRejectedValueOnce(new Error("conexão recusada")).mockResolvedValue();
+    const app = await carregarApp();
+
+    const primeira = await requisitar(app, "/");
+    const segunda = await fetch(`http://127.0.0.1:${servidor.address().port}/`);
+    const terceira = await fetch(`http://127.0.0.1:${servidor.address().port}/`);
+
+    expect(primeira.status).toBe(200);
+    expect(segunda.status).toBe(200);
+    expect(terceira.status).toBe(200);
+    expect(sync).toHaveBeenCalledTimes(2);
+  });
+
+  it("continua respondendo 503 enquanto o banco segue indisponível e tenta a cada requisição", async () => {
+    sync.mockRejectedValue(new Error("conexão recusada"));
+    const app = await carregarApp();
+
+    await requisitar(app, "/");
+    const segunda = await fetch(`http://127.0.0.1:${servidor.address().port}/`);
+
+    expect(segunda.status).toBe(503);
+    expect(sync).toHaveBeenCalledTimes(3);
+  });
+
   it("nunca apaga o banco, mesmo com ERASE_DATABASE_ON_SYNC=true", async () => {
     vi.stubEnv("ERASE_DATABASE_ON_SYNC", "true");
     sync.mockResolvedValue();

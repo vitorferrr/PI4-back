@@ -24,7 +24,7 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(async (req, res, next) => {
   try {
-    await ready;
+    await conectarBanco();
     next();
   } catch {
     return res.status(503).json({
@@ -52,15 +52,25 @@ const port = process.env.PORT || 3000;
 const eraseDatabaseOnSync =
   process.env.ERASE_DATABASE_ON_SYNC === "true" && !process.env.VERCEL;
 
-const ready = sequelize
-  .sync({ force: eraseDatabaseOnSync })
+let conexao;
+
+const conectarBanco = () => {
+  conexao ??= sequelize.sync({ force: eraseDatabaseOnSync }).catch((erro) => {
+    conexao = undefined;
+    console.error("Erro ao conectar com o banco de dados:", erro.message);
+    throw erro;
+  });
+
+  return conexao;
+};
+
+const ready = conectarBanco()
   .then(() => {
     if (!process.env.VERCEL) {
       app.listen(port, () => console.log(`Servidor rodando na porta ${port}!`));
     }
   })
   .catch((erro) => {
-    console.error("Erro ao conectar com o banco de dados:", erro.message);
     if (!process.env.VERCEL) process.exit(1);
     throw erro;
   });
