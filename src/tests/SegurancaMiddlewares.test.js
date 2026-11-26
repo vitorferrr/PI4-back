@@ -7,7 +7,8 @@ const subirApp = async (...middlewares) => {
   const { default: errorHandler } = await import("../middlewares/errorHandler.js");
   const app = express();
   app.use(...middlewares);
-  app.all("/teste", (req, res) => res.status(200).json({ ok: true }));
+  // ?status=401 simula um login com senha errada.
+  app.all("/teste", (req, res) => res.status(Number(req.query.status) || 200).json({ ok: true }));
   app.use(errorHandler);
 
   await new Promise((resolve) => {
@@ -95,12 +96,21 @@ describe("rateLimiter (DT-34)", () => {
     return import("../middlewares/rateLimiter.js");
   };
 
-  it("deixa 5 tentativas de login passarem e responde 429 na 6ª", async () => {
+  it("logins que dão certo não contam para o limite", async () => {
+    const { authLimiterMiddleware } = await carregarLimitadores();
+    const url = await subirApp(authLimiterMiddleware);
+
+    for (let login = 1; login <= 10; login++) {
+      expect((await fetch(url, { method: "POST" })).status).toBe(200);
+    }
+  });
+
+  it("deixa 5 tentativas erradas passarem e responde 429 na 6ª, mesmo com a senha certa", async () => {
     const { authLimiterMiddleware } = await carregarLimitadores();
     const url = await subirApp(authLimiterMiddleware);
 
     for (let tentativa = 1; tentativa <= 5; tentativa++) {
-      expect((await fetch(url, { method: "POST" })).status).toBe(200);
+      expect((await fetch(`${url}?status=401`, { method: "POST" })).status).toBe(401);
     }
     const bloqueada = await fetch(url, { method: "POST" });
 
