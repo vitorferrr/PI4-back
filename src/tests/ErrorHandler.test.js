@@ -81,7 +81,7 @@ describe("errorHandler", () => {
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
-      mensagem: "Dados inválidos",
+      mensagem: "Campo obrigatório",
       erros: ["Campo obrigatório"],
     });
   });

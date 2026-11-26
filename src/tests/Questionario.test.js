@@ -92,18 +92,15 @@ describe("questionarioController.listar", () => {
     expect(res.json).toHaveBeenCalledWith(perguntas);
   });
 
-  it("retorna 500 quando ocorre um erro ao listar", async () => {
+  it("deixa o erro do service subir para o middleware global de erro", async () => {
     const req = {};
     const res = criarRes();
+    const erro = new Error("Erro de banco");
 
-    vi.spyOn(questionarioService, "listar").mockRejectedValueOnce(new Error("Erro de banco"));
+    vi.spyOn(questionarioService, "listar").mockRejectedValueOnce(erro);
 
-    await questionarioController.listar(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({
-      mensagem: "Erro ao listar questionário",
-    });
+    await expect(questionarioController.listar(req, res)).rejects.toBe(erro);
+    expect(res.status).not.toHaveBeenCalled();
   });
 });
 
@@ -341,9 +338,10 @@ describe("questionarioController.salvarRespostas", () => {
     });
     const salvar = vi.spyOn(questionarioService, "salvarRespostas");
 
-    await questionarioController.salvarRespostas(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(404);
+    await expect(questionarioController.salvarRespostas(req, res)).rejects.toMatchObject({
+      statusCode: 404,
+      message: "Visita não encontrada",
+    });
     expect(salvar).not.toHaveBeenCalled();
   });
 
@@ -356,9 +354,10 @@ describe("questionarioController.salvarRespostas", () => {
     });
     vi.spyOn(questionarioService, "salvarRespostas").mockResolvedValueOnce(null);
 
-    await questionarioController.salvarRespostas(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(404);
+    await expect(questionarioController.salvarRespostas(req, res)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    expect(res.status).not.toHaveBeenCalled();
   });
 });
 

@@ -1,57 +1,27 @@
 import authService from "../services/authService.js";
-import tratarErro from "../utils/tratarErro.js";
+import AppError from "../utils/appError.js";
 
 const login = async (req, res) => {
   const { email, senha } = req.body ?? {};
 
   if (!email || !senha) {
-    return res.status(400).json({
-      mensagem: "Email e senha são obrigatórios",
-    });
+    throw new AppError("Email e senha são obrigatórios", 400);
   }
 
-  try {
-    const resultado = await authService.login({ email, senha });
-    return res.status(200).json(resultado);
-  } catch (erro) {
-    if (erro.name === "AutenticacaoError") {
-      return res.status(401).json({ mensagem: erro.message });
-    }
-
-    if (erro.name === "CadastroPendenteError") {
-      return res.status(403).json({ mensagem: erro.message });
-    }
-
-    console.error(erro);
-
-    return res.status(500).json({
-      mensagem: "Erro ao realizar login",
-    });
-  }
+  const resultado = await authService.login({ email, senha });
+  return res.status(200).json(resultado);
 };
 
 const signup = async (req, res) => {
-  try {
-    const resultado = await authService.signup(req.body);
+  const resultado = await authService.signup(req.body);
 
-    return res.status(201).json(resultado);
-  } catch (erro) {
-    if (erro.name === "EmailCadastradoError") {
-      return res.status(409).json({ mensagem: erro.message });
-    }
-
-    return tratarErro(res, erro, "Erro ao realizar cadastro");
-  }
+  return res.status(201).json(resultado);
 };
 
 const logout = async (req, res) => {
-  try {
-    await authService.logout(req.usuario);
+  await authService.logout(req.usuario);
 
-    return res.status(204).send();
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao encerrar a sessão");
-  }
+  return res.status(204).send();
 };
 
 export default {

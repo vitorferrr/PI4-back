@@ -3,6 +3,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import usuarioRoutes from "../routes/usuarioRoutes.js";
 import usuarioService from "../services/usuarioService.js";
+import errorHandler from "../middlewares/errorHandler.js";
 
 vi.mock("../services/authService.js", () => ({ default: { tokenRevogado: vi.fn(async () => false) } }));
 vi.mock("../services/usuarioService.js", () => ({
@@ -41,6 +42,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use("/usuarios", usuarioRoutes);
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -116,7 +118,9 @@ describe("POST /usuarios (respostas do controller)", () => {
   });
 
   it("responde 409 quando o banco acusa email duplicado", async () => {
-    usuarioService.criar.mockRejectedValue(criarErro("SequelizeUniqueConstraintError"));
+    usuarioService.criar.mockRejectedValue(
+      criarErro("SequelizeUniqueConstraintError", { fields: { email: novoUsuario.email } })
+    );
 
     const resposta = await requisitar("POST", "", "admin", novoUsuario);
 
@@ -133,7 +137,7 @@ describe("POST /usuarios (respostas do controller)", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao criar usuário",
+      mensagem: "A senha é obrigatória",
       erros: ["A senha é obrigatória"],
     });
   });
@@ -149,7 +153,7 @@ describe("POST /usuarios (respostas do controller)", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao criar usuário",
+      mensagem: "email inválido, Role deve ser admin, gestor ou fiscalizador",
       erros: ["email inválido", "Role deve ser admin, gestor ou fiscalizador"],
     });
   });
@@ -222,7 +226,7 @@ describe("PATCH /usuarios/:id/reprovar (respostas do controller)", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao reprovar usuário",
+      mensagem: "Só cadastros de fiscalizador podem ser reprovados",
       erros: ["Só cadastros de fiscalizador podem ser reprovados"],
     });
   });
@@ -329,12 +333,12 @@ describe("DELETE /usuarios/:id (respostas do controller)", () => {
 });
 
 describe.each([
-  ["POST", "", "criar", "Erro ao criar usuário"],
-  ["GET", "", "listar", "Erro ao listar usuários"],
-  ["GET", "/1", "buscarPorId", "Erro ao buscar usuário"],
-  ["PUT", "/1", "atualizar", "Erro ao atualizar usuário"],
-  ["DELETE", "/1", "remover", "Erro ao apagar usuário"],
-])("erro inesperado em %s /usuarios%s", (metodo, caminho, funcaoService, mensagem) => {
+  ["POST", "", "criar"],
+  ["GET", "", "listar"],
+  ["GET", "/1", "buscarPorId"],
+  ["PUT", "/1", "atualizar"],
+  ["DELETE", "/1", "remover"],
+])("erro inesperado em %s /usuarios%s", (metodo, caminho, funcaoService) => {
   it("responde 500 sem expor o erro interno", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     usuarioService[funcaoService].mockRejectedValue(new Error("falha no banco"));
@@ -348,7 +352,7 @@ describe.each([
     const resposta = await requisitar(metodo, caminho, "admin", corpo);
 
     expect(resposta.status).toBe(500);
-    expect(await resposta.json()).toEqual({ mensagem });
+    expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
   });

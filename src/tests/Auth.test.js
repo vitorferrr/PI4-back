@@ -73,7 +73,7 @@ describe("login (authService)", () => {
 
     await expect(
       authService.login({ email: "  Bia@Exemplo.COM ", senha: "1234" })
-    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+    ).rejects.toMatchObject({ statusCode: 401 });
 
     expect(Usuario.findOne).toHaveBeenCalledWith({ where: { email: "bia@exemplo.com" } });
   });
@@ -82,7 +82,7 @@ describe("login (authService)", () => {
     "rejeita email que não é texto preenchido (%o) sem consultar o banco",
     async (email) => {
       await expect(authService.login({ email, senha: "1234" })).rejects.toMatchObject({
-        name: "AutenticacaoError",
+        statusCode: 401,
       });
       expect(Usuario.findOne).not.toHaveBeenCalled();
     }
@@ -101,7 +101,7 @@ describe("login (authService)", () => {
 
     await expect(
       authService.login({ email: "x@exemplo.com", senha: "1234" })
-    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it("bloqueia o login de cadastro ainda não aprovado", async () => {
@@ -115,7 +115,7 @@ describe("login (authService)", () => {
     await expect(
       authService.login({ email: "bia@exemplo.com", senha: "senha-forte" })
     ).rejects.toMatchObject({
-      name: "CadastroPendenteError",
+      statusCode: 403,
       message: "Cadastro aguardando aprovação de um administrador",
     });
   });
@@ -129,7 +129,7 @@ describe("login (authService)", () => {
 
     await expect(
       authService.login({ email: "bia@exemplo.com", senha: "errada" })
-    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it("rejeita quando a senha está errada", async () => {
@@ -380,16 +380,15 @@ describe("middleware autorizar", () => {
 });
 
 describe("authController.login", () => {
-  it("retorna 400 se email ou senha não forem fornecidos", async () => {
+  it("lança AppError 400 se email ou senha não forem fornecidos", async () => {
     const req = { body: {} };
     const res = criarRes();
 
-    await authController.login(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({
-      mensagem: "Email e senha são obrigatórios",
+    await expect(authController.login(req, res)).rejects.toMatchObject({
+      statusCode: 400,
+      message: "Email e senha são obrigatórios",
     });
+    expect(res.status).not.toHaveBeenCalled();
   });
 
   it("retorna 200 e o resultado quando o login for bem-sucedido", async () => {
@@ -405,46 +404,14 @@ describe("authController.login", () => {
     expect(res.json).toHaveBeenCalledWith(tokenMock);
   });
 
-  it("retorna 401 quando o authService lança AutenticacaoError", async () => {
+  it("deixa o erro do authService subir para o middleware global de erro", async () => {
     const req = { body: { email: "errado@exemplo.com", senha: "errada" } };
     const res = criarRes();
+    const erro = new Error("Erro de banco");
 
-    const erro = new Error("E-mail ou senha inválidos");
-    erro.name = "AutenticacaoError";
-    
     vi.spyOn(authService, "login").mockRejectedValueOnce(erro);
 
-    await authController.login(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ mensagem: "E-mail ou senha inválidos" });
-  });
-
-  it("retorna 500 quando ocorre um erro genérico/inesperado", async () => {
-    const req = { body: { email: "bia@exemplo.com", senha: "123" } };
-    const res = criarRes();
-
-    vi.spyOn(authService, "login").mockRejectedValueOnce(
-      Object.assign(new Error("Cadastro aguardando aprovação de um administrador"), {
-        name: "CadastroPendenteError",
-      })
-    );
-
-    await authController.login(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({
-      mensagem: "Cadastro aguardando aprovação de um administrador",
-    });
-
-    vi.clearAllMocks();
-    vi.spyOn(authService, "login").mockRejectedValueOnce(new Error("Erro de banco"));
-
-    await authController.login(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({
-      mensagem: "Erro ao realizar login",
-    });
+    await expect(authController.login(req, res)).rejects.toBe(erro);
+    expect(res.status).not.toHaveBeenCalled();
   });
 });

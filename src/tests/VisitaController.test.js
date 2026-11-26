@@ -3,6 +3,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import visitaRoutes from "../routes/visitaRoutes.js";
 import visitaService from "../services/visitaService.js";
+import errorHandler from "../middlewares/errorHandler.js";
 
 vi.mock("../services/authService.js", () => ({ default: { tokenRevogado: vi.fn(async () => false) } }));
 vi.mock("../services/visitaService.js", () => ({
@@ -60,6 +61,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use("/visitas", visitaRoutes);
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -193,7 +195,7 @@ describe("POST /visitas", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao criar visita",
+      mensagem: "erro do service",
       erros: ["erro do service"],
     });
   });
@@ -209,7 +211,7 @@ describe("POST /visitas", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao criar visita",
+      mensagem: "denunciado vazio, data inválida",
       erros: ["denunciado vazio", "data inválida"],
     });
   });
@@ -294,10 +296,7 @@ describe("GET /visitas", () => {
   });
 });
 
-describe.each([
-  ["iniciar", "Erro ao iniciar visita"],
-  ["concluir", "Erro ao concluir visita"],
-])("PATCH /visitas/:id/%s", (acao, mensagemErro) => {
+describe.each([["iniciar"], ["concluir"]])("PATCH /visitas/:id/%s", (acao) => {
   it("aplica a transição para o fiscalizador associado", async () => {
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
     visitaService[acao].mockResolvedValue({ id: 10 });
@@ -345,7 +344,7 @@ describe.each([
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: mensagemErro,
+      mensagem: "transição inválida",
       erros: ["transição inválida"],
     });
   });
@@ -412,7 +411,7 @@ describe("PATCH /visitas/:id/iniciar com localização", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao iniciar visita",
+      mensagem: "A latitude deve ser um número entre -90 e 90",
       erros: ["A latitude deve ser um número entre -90 e 90"],
     });
   });
@@ -426,7 +425,7 @@ describe("erros inesperados", () => {
     const resposta = await requisitar("GET", "/10");
 
     expect(resposta.status).toBe(500);
-    expect(await resposta.json()).toEqual({ mensagem: "Erro ao buscar visita" });
+    expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     consoleError.mockRestore();
   });
 });
@@ -526,7 +525,7 @@ describe("PATCH /visitas/:id/observacoes", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao salvar observações",
+      mensagem: erro.message,
       erros: [erro.message],
     });
   });

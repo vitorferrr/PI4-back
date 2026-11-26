@@ -213,9 +213,11 @@ describe("documentoController.gerar", () => {
     const gerar = vi.spyOn(documentoService, "gerar");
     const res = criarRes();
 
-    await documentoController.gerar(requisicao(6), res);
-
-    expect(res.status).toHaveBeenCalledWith(404);
+    await expect(documentoController.gerar(requisicao(6), res)).rejects.toMatchObject({
+      statusCode: 404,
+      message: "Visita não encontrada",
+    });
+    expect(res.status).not.toHaveBeenCalled();
     expect(gerar).not.toHaveBeenCalled();
   });
 
@@ -224,8 +226,9 @@ describe("documentoController.gerar", () => {
     vi.spyOn(documentoService, "gerar").mockResolvedValueOnce(null);
     const res = criarRes();
 
-    await documentoController.gerar(requisicao(), res);
-
-    expect(res.status).toHaveBeenCalledWith(404);
+    await expect(documentoController.gerar(requisicao(), res)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    expect(res.status).not.toHaveBeenCalled();
   });
 });

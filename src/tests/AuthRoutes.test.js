@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import authRoutes from "../routes/authRoutes.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import usuarioService from "../services/usuarioService.js";
+import errorHandler from "../middlewares/errorHandler.js";
 
 vi.mock("../models/index.js", () => {
   const revogados = new Set();
@@ -57,6 +58,7 @@ beforeAll(async () => {
   app.use(express.json());
   app.use("/auth", authRoutes);
   app.post("/auth/protegida", autenticar, (req, res) => res.status(200).json({ ok: true }));
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -120,7 +122,7 @@ describe("POST /auth/signup", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao realizar cadastro",
+      mensagem: "Nome, email e senha são obrigatórios",
       erros: ["Nome, email e senha são obrigatórios"],
     });
     expect(usuarioService.criar).not.toHaveBeenCalled();
@@ -182,7 +184,7 @@ describe("POST /auth/signup", () => {
     const resposta = await requisitar("/signup", cadastro);
 
     expect(resposta.status).toBe(500);
-    expect(await resposta.json()).toEqual({ mensagem: "Erro ao realizar cadastro" });
+    expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     consoleError.mockRestore();
   });
 });

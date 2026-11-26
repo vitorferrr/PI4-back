@@ -46,6 +46,16 @@ const errorHandler = (erro, req, res, next) => {
     return responderErro(res, erro.statusCode, erro.message);
   }
 
+  if (erro.name === "SequelizeValidationError") {
+    const erros = (erro.errors || []).map((e) => e.message);
+    return responderErro(
+      res,
+      400,
+      erros.length > 0 ? erros.join(", ") : erro.message,
+      erros
+    );
+  }
+
   if (erro.name === "SequelizeDatabaseError" && erro.original?.code === "22P02") {
     return responderErro(
       res,

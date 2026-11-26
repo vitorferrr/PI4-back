@@ -3,6 +3,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import questionarioRoutes from "../routes/questionarioRoutes.js";
 import visitaRoutes from "../routes/visitaRoutes.js";
+import errorHandler from "../middlewares/errorHandler.js";
 import questionarioService from "../services/questionarioService.js";
 import visitaService from "../services/visitaService.js";
 
@@ -58,6 +59,7 @@ beforeAll(async () => {
   app.use(express.json());
   app.use("/questionario", questionarioRoutes);
   app.use("/visitas", visitaRoutes);
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -150,7 +152,7 @@ describe("POST /visitas/:id/respostas", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao salvar respostas",
+      mensagem: "Há respostas inválidas",
       erros: ["A pergunta 99 não existe"],
     });
   });
@@ -369,7 +371,7 @@ describe("respostas da visita por URL composta", () => {
 
       expect(resposta.status).toBe(400);
       expect(await resposta.json()).toEqual({
-        mensagem: "Erro ao atualizar resposta",
+        mensagem: "O documento da visita já foi gerado; as respostas não podem mais ser alteradas",
         erros: ["O documento da visita já foi gerado; as respostas não podem mais ser alteradas"],
       });
     });
@@ -432,7 +434,7 @@ describe("respostas da visita por URL composta", () => {
     const resposta = await requisitar("GET", "/visitas/10/respostas", "admin", 1);
 
     expect(resposta.status).toBe(500);
-    expect(await resposta.json()).toEqual({ mensagem: "Erro ao listar respostas" });
+    expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     consoleError.mockRestore();
   });
 });
