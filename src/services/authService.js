@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import bcrypt from "bcrypt";
+import argon2 from "argon2";
 import Sequelize from "sequelize";
 import jwt from "jsonwebtoken";
 import models from "../models/index.js";
@@ -62,7 +62,13 @@ const login = async (dados = {}) => {
 
   const usuario = await Usuario.findOne({ where: { email } });
 
-  if (!usuario || !(await bcrypt.compare(senha, usuario.senha_hash))) {
+  // Um hash em formato antigo (ex.: bcrypt, de antes da migração para Argon2)
+  // não deve derrubar o login com 500; trata como senha incorreta.
+  const senhaCorreta = usuario
+    ? await argon2.verify(usuario.senha_hash, senha).catch(() => false)
+    : false;
+
+  if (!senhaCorreta) {
     throw erroAutenticacao();
   }
 

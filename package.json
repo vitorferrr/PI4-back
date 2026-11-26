@@ -28,7 +28,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.119.2",
     "@vercel/functions": "^3.11.3",
-    "bcrypt": "^6.0.0",
+    "argon2": "^0.45.2",
     "cors": "^2.8.6",
     "dotenv": "^18.0.1",
     "express": "^5.2.1",

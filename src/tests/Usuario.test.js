@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import bcrypt from "bcrypt";
+import argon2 from "argon2";
 import Sequelize from "sequelize";
 import pg from "pg";
 import models from "../models/index.js";
@@ -67,7 +67,7 @@ describe("cadastro de usuário", () => {
       where: { email: dados.email },
     });
     expect(dadosSalvos.senha_hash).not.toBe(dados.senha);
-    expect(await bcrypt.compare(dados.senha, dadosSalvos.senha_hash)).toBe(true);
+    expect(await argon2.verify(dadosSalvos.senha_hash, dados.senha)).toBe(true);
     expect(resultado).toEqual({
       id: 1,
       nome: dados.nome,
@@ -354,7 +354,7 @@ describe("atualizar usuário", () => {
 
     expect(dadosSalvos.senha).toBeUndefined();
     expect(dadosSalvos.senha_hash).not.toBe("novaSenha");
-    expect(await bcrypt.compare("novaSenha", dadosSalvos.senha_hash)).toBe(true);
+    expect(await argon2.verify(dadosSalvos.senha_hash, "novaSenha")).toBe(true);
   });
 
   it("deve retornar null quando o usuário não existir", async () => {

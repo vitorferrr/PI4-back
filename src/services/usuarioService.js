@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import argon2 from "argon2";
 import models from "../models/index.js";
 import normalizarEmail from "../utils/normalizarEmail.js";
 
@@ -32,7 +32,7 @@ const criar = async (dados) => {
       throw erro;
     }
 
-  const senha_hash = await bcrypt.hash(senha, 10);
+  const senha_hash = await argon2.hash(senha);
 
   const usuario = await Usuario.create({
     nome,
@@ -117,7 +117,7 @@ const atualizar = async (id, dados) => {
   }
 
   if (dados.senha) {
-    dadosAtualizados.senha_hash = await bcrypt.hash(dados.senha, 10);
+    dadosAtualizados.senha_hash = await argon2.hash(dados.senha);
   }
 
   await usuario.update(dadosAtualizados);

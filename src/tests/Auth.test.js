@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import bcrypt from "bcrypt";
+import argon2 from "argon2";
 import jwt from "jsonwebtoken";
 import Sequelize from "sequelize";
 import models from "../models/index.js";
@@ -39,7 +39,7 @@ beforeEach(() => {
 
 describe("login (authService)", () => {
   it("retorna token válido e dados do usuário sem a senha", async () => {
-    const senha_hash = await bcrypt.hash("1234", 10);
+    const senha_hash = await argon2.hash("1234");
     Usuario.findOne.mockResolvedValue({
       id: 1,
       nome: "Bia",
@@ -109,7 +109,7 @@ describe("login (authService)", () => {
       id: 1,
       role: "fiscalizador",
       aprovado: false,
-      senha_hash: await bcrypt.hash("senha-forte", 10),
+      senha_hash: await argon2.hash("senha-forte"),
     });
 
     await expect(
@@ -124,7 +124,7 @@ describe("login (authService)", () => {
     Usuario.findOne.mockResolvedValue({
       id: 1,
       aprovado: false,
-      senha_hash: await bcrypt.hash("senha-forte", 10),
+      senha_hash: await argon2.hash("senha-forte"),
     });
 
     await expect(
@@ -135,7 +135,7 @@ describe("login (authService)", () => {
   it("rejeita quando a senha está errada", async () => {
     Usuario.findOne.mockResolvedValue({
       id: 1,
-      senha_hash: await bcrypt.hash("certa", 10),
+      senha_hash: await argon2.hash("certa"),
     });
 
     await expect(
