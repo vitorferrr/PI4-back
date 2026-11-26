@@ -49,8 +49,12 @@ const dadosVisita = {
 
 const criarVisitaFalsa = (dados = {}) => ({
   id: 10,
+  status: "agendada",
   ...dados,
+  getFiscalizadores: vi.fn(),
+  addFiscalizador: vi.fn(),
   setFiscalizadores: vi.fn(),
+  removeFiscalizador: vi.fn(),
   update: vi.fn(),
   destroy: vi.fn(),
 });
@@ -283,7 +287,13 @@ describe("atualizar visita", () => {
 
     const resultado = await visitaService.atualizar(
       10,
-      { status: "em_andamento", campoInvalido: "x" },
+      {
+        denunciado: "Novo Mercado",
+        data_realizacao: "2026-10-21T10:00:00Z",
+        latitude: -23.5,
+        longitude: -46.6,
+        campoInvalido: "x",
+      },
       [4]
     );
 
@@ -297,7 +307,7 @@ describe("atualizar visita", () => {
       transaction: transacao,
     });
     expect(visita.update).toHaveBeenCalledWith(
-      { status: "em_andamento" },
+      { denunciado: "Novo Mercado" },
       { transaction: transacao }
     );
     expect(visita.setFiscalizadores).toHaveBeenCalledWith([4], {
@@ -365,7 +375,7 @@ describe("atualizar visita", () => {
     visita.update.mockRejectedValue(new Error("erro"));
     Visita.findByPk.mockResolvedValue(visita);
 
-    await expect(visitaService.atualizar(10, { status: "concluida" })).rejects.toThrow();
+    await expect(visitaService.atualizar(10, { denunciado: "Novo Nome" })).rejects.toThrow();
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
     expect(transacao.commit).not.toHaveBeenCalled();
   });
@@ -373,7 +383,7 @@ describe("atualizar visita", () => {
   it("retorna null e desfaz a transação quando a visita não existe", async () => {
     Visita.findByPk.mockResolvedValue(null);
 
-    expect(await visitaService.atualizar(99, { status: "concluida" })).toBeNull();
+    expect(await visitaService.atualizar(99, { denunciado: "Novo Nome" })).toBeNull();
     expect(transacao.rollback).toHaveBeenCalledTimes(1);
     expect(Documento.findOne).not.toHaveBeenCalled();
   });
@@ -587,6 +597,7 @@ describe("remover visita", () => {
   it("remove a visita encontrada", async () => {
     const visita = criarVisitaFalsa(dadosVisita);
     Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue(null);
 
     const resultado = await visitaService.remover(10);
 
@@ -598,6 +609,17 @@ describe("remover visita", () => {
     Visita.findByPk.mockResolvedValue(null);
 
     expect(await visitaService.remover(99)).toBeNull();
+  });
+
+  it("recusa a remoção quando o documento da visita já foi gerado", async () => {
+    const visita = criarVisitaFalsa(dadosVisita);
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue({ id: 3 });
+
+    await expect(visitaService.remover(10)).rejects.toThrow(
+      "O documento da visita já foi gerado; a visita não pode mais ser apagada"
+    );
+    expect(visita.destroy).not.toHaveBeenCalled();
   });
 });
 
@@ -706,5 +728,133 @@ describe("associações do modelo Visita", () => {
       as: "documentos",
       onDelete: "CASCADE",
     });
+  });
+});
+
+describe("relacionamento visita <-> fiscalizadores (DT-06)", () => {
+  it("lista fiscalizadores da visita sem senha_hash", async () => {
+    const visita = criarVisitaFalsa();
+    const lista = [{ id: 5, nome: "Ana" }];
+    visita.getFiscalizadores.mockResolvedValue(lista);
+    Visita.findByPk.mockResolvedValue(visita);
+
+    const resultado = await visitaService.listarFiscalizadores(10);
+
+    expect(visita.getFiscalizadores).toHaveBeenCalledWith({
+      attributes: { exclude: ["senha_hash"] },
+      joinTableAttributes: [],
+    });
+    expect(resultado).toEqual(lista);
+  });
+
+  it("adiciona fiscalizador quando a visita ainda não possui vínculo", async () => {
+    const visita = criarVisitaFalsa();
+    visita.getFiscalizadores
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 5, nome: "Ana" }]);
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue(null);
+
+    const resultado = await visitaService.adicionarFiscalizador(10, 5);
+
+    expect(visita.addFiscalizador).toHaveBeenCalledWith(5, {
+      transaction: sequelize.transacao,
+    });
+    expect(resultado).toEqual([{ id: 5, nome: "Ana" }]);
+  });
+
+  it("recusa adicionar fiscalizador se a visita já possui um", async () => {
+    const visita = criarVisitaFalsa();
+    visita.getFiscalizadores.mockResolvedValueOnce([{ id: 5 }]);
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue(null);
+
+    await expect(visitaService.adicionarFiscalizador(10, 6)).rejects.toThrow(
+      "A visita já possui fiscalizador vinculado; utilize PUT para substituí-lo"
+    );
+    expect(visita.addFiscalizador).not.toHaveBeenCalled();
+  });
+
+  it("substitui fiscalizadores e bloqueia alteração após documento gerado", async () => {
+    const visita = criarVisitaFalsa();
+    visita.getFiscalizadores.mockResolvedValue([{ id: 7, nome: "Bruno" }]);
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 1 });
+
+    const resultado = await visitaService.substituirFiscalizadores(10, [7]);
+    expect(visita.setFiscalizadores).toHaveBeenCalledWith([7], {
+      transaction: sequelize.transacao,
+    });
+    expect(resultado).toEqual([{ id: 7, nome: "Bruno" }]);
+
+    await expect(visitaService.substituirFiscalizadores(10, [8])).rejects.toThrow(
+      "O documento da visita já foi gerado; os fiscalizadores não podem mais ser alterados"
+    );
+  });
+
+  it("remove fiscalizador vinculado e sinaliza naoVinculado se não estiver associado", async () => {
+    const visita = criarVisitaFalsa();
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue(null);
+
+    visita.getFiscalizadores.mockResolvedValueOnce([]);
+    expect(await visitaService.removerFiscalizador(10, 99)).toEqual({
+      naoVinculado: true,
+    });
+
+    visita.getFiscalizadores.mockResolvedValueOnce([]);
+    expect(await visitaService.removerFiscalizador(10, 99)).toEqual({
+      naoVinculado: true,
+    });
+
+    visita.getFiscalizadores.mockResolvedValueOnce([{ id: 5 }]);
+    await expect(
+      visitaService.removerFiscalizador(10, "5")
+    ).resolves.toEqual({ removido: true });
+    expect(visita.removeFiscalizador).toHaveBeenCalledWith(5, {
+      transaction: sequelize.transacao,
+    });
+  });
+});
+
+describe("regras de proteção na edição, remoção e vínculo (revisão PR #76)", () => {
+  it("permite cancelar visita agendada ou em andamento no atualizar e recusa outros status", async () => {
+    const visita = criarVisitaFalsa({ status: "agendada" });
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue(null);
+
+    await visitaService.atualizar(10, { status: "cancelada" });
+    expect(visita.update).toHaveBeenCalledWith(
+      { status: "cancelada" },
+      { transaction: sequelize.transacao }
+    );
+
+    await expect(
+      visitaService.atualizar(10, { status: "concluida" })
+    ).rejects.toThrow("Na edição da visita, o único status permitido é 'cancelada'");
+  });
+
+  it("recusa atualizar gestor_id para usuário sem perfil de gestor", async () => {
+    const visita = criarVisitaFalsa({ status: "agendada" });
+    Visita.findByPk.mockResolvedValue(visita);
+    Usuario.findByPk.mockResolvedValueOnce({ id: 5, role: "fiscalizador" });
+
+    await expect(
+      visitaService.atualizar(10, { gestor_id: 5 })
+    ).rejects.toThrow("O gestor informado não existe ou não possui perfil de gestor");
+  });
+
+  it("recusa remoção de visita e alteração de fiscalizadores quando a visita não está agendada", async () => {
+    const visitaEmAndamento = criarVisitaFalsa({ status: "em_andamento" });
+    Visita.findByPk.mockResolvedValue(visitaEmAndamento);
+
+    await expect(visitaService.remover(10)).rejects.toThrow(
+      "Somente visitas agendadas podem ser apagadas"
+    );
+    await expect(
+      visitaService.substituirFiscalizadores(10, [5])
+    ).rejects.toThrow(
+      "Só é possível alterar fiscalizadores de visitas agendadas"
+    );
   });
 });

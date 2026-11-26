@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   validarAtualizacaoResposta,
   validarAtualizacaoUsuario,
+  validarAtualizacaoVisita,
   validarCriacaoUsuario,
   validarCriacaoVisita,
   validarListagemUsuarios,
@@ -278,5 +279,32 @@ describe("validarRespostasQuestionario", () => {
       vi.fn()
     );
     expect(res2.status).toHaveBeenCalledWith(400);
+  });
+});
+
+describe("validarAtualizacaoVisita", () => {
+  it("permite atualização parcial válida e cancelamento", () => {
+    const next = vi.fn();
+    validarAtualizacaoVisita(
+      { body: { denunciado: "Novo Local", status: "cancelada" } },
+      criarRes(),
+      next
+    );
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejeita corpo vazio, data inválida ou status diferente de 'cancelada'", () => {
+    const res1 = criarRes();
+    validarAtualizacaoVisita({ body: {} }, res1, vi.fn());
+    expect(res1.status).toHaveBeenCalledWith(400);
+
+    const res2 = criarRes();
+    validarAtualizacaoVisita(
+      { body: { data_agendada: "amanhã", status: "concluida" } },
+      res2,
+      vi.fn()
+    );
+    expect(res2.status).toHaveBeenCalledWith(400);
+    expect(res2.json.mock.calls[0][0].erros).toHaveLength(2);
   });
 });

@@ -16,6 +16,10 @@ vi.mock("../services/documentoService.js", () => ({
 vi.mock("../services/questionarioService.js", () => ({
   default: {
     listar: vi.fn(),
+    buscarPorId: vi.fn(),
+    criar: vi.fn(),
+    atualizar: vi.fn(),
+    remover: vi.fn(),
     salvarRespostas: vi.fn(),
     listarDaVisita: vi.fn(),
     buscarDaVisita: vi.fn(),
@@ -169,6 +173,80 @@ describe("POST /visitas/:id/respostas", () => {
     consoleError.mockRestore();
   });
 });
+describe("CRUD de perguntas em /questionario", () => {
+  const pergunta = {
+    id: 1,
+    texto: "O local possui alvará?",
+    tipo_resposta: "sim_nao",
+    ordem: 1,
+  };
+
+  it("POST /questionario cria pergunta para admin (201)", async () => {
+    questionarioService.criar.mockResolvedValue(pergunta);
+
+    const resposta = await requisitar("POST", "/questionario", "admin", 1, {
+      texto: "O local possui alvará?",
+      tipo_resposta: "sim_nao",
+      ordem: 1,
+    });
+
+    expect(resposta.status).toBe(201);
+    expect(await resposta.json()).toEqual(pergunta);
+  });
+
+  it.each(["gestor", "fiscalizador"])(
+    "POST /questionario responde 403 para %s",
+    async (role) => {
+      const resposta = await requisitar("POST", "/questionario", role, 1, pergunta);
+
+      expect(resposta.status).toBe(403);
+      expect(questionarioService.criar).not.toHaveBeenCalled();
+    }
+  );
+
+  it("GET /questionario/:id retorna 200 para admin e 404 quando não existe", async () => {
+    questionarioService.buscarPorId.mockResolvedValueOnce(pergunta);
+    const ok = await requisitar("GET", "/questionario/1", "admin", 1);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual(pergunta);
+
+    questionarioService.buscarPorId.mockResolvedValueOnce(null);
+    const naoEncontrada = await requisitar("GET", "/questionario/99", "admin", 1);
+    expect(naoEncontrada.status).toBe(404);
+  });
+
+  it("GET /questionario/:id responde 400 para id inválido", async () => {
+    const resposta = await requisitar("GET", "/questionario/abc", "admin", 1);
+
+    expect(resposta.status).toBe(400);
+    expect(questionarioService.buscarPorId).not.toHaveBeenCalled();
+  });
+
+  it("PUT /questionario/:id atualiza pergunta para admin (200)", async () => {
+    const atualizada = { ...pergunta, texto: "Editada" };
+    questionarioService.atualizar.mockResolvedValue(atualizada);
+
+    const resposta = await requisitar("PUT", "/questionario/1", "admin", 1, {
+      texto: "Editada",
+    });
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual(atualizada);
+  });
+
+  it("DELETE /questionario/:id remove pergunta para admin (204) e retorna 400 se já respondida", async () => {
+    questionarioService.remover.mockResolvedValueOnce(pergunta);
+    const ok = await requisitar("DELETE", "/questionario/1", "admin", 1);
+    expect(ok.status).toBe(204);
+
+    const erro = new Error("Pergunta já respondida em visitas; não pode ser apagada");
+    erro.name = "ValidacaoError";
+    questionarioService.remover.mockRejectedValueOnce(erro);
+    const bloqueada = await requisitar("DELETE", "/questionario/1", "admin", 1);
+    expect(bloqueada.status).toBe(400);
+  });
+});
+
 describe("respostas da visita por URL composta", () => {
   const respostaSalva = { id: 3, visita_id: 10, pergunta_id: 2, resposta: "Sim" };
 

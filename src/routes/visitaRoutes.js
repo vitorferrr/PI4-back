@@ -4,9 +4,13 @@ import questionarioController from "../controllers/questionarioController.js";
 import documentoController from "../controllers/documentoController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
-import validarId, { validarIdParametro } from "../middlewares/validarIdMiddleware.js";
+import validarId, {
+  validarIdParametro,
+  validarParametroId,
+} from "../middlewares/validarIdMiddleware.js";
 import {
   validarAtualizacaoResposta,
+  validarAtualizacaoVisita,
   validarCriacaoVisita,
   validarListagemVisitas,
   validarRespostasQuestionario,
@@ -36,6 +40,56 @@ router.get(
   autorizar("admin", "gestor", "fiscalizador"),
   validarId,
   visitaController.buscarPorId
+);
+
+router.put(
+  "/:id",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  validarAtualizacaoVisita,
+  visitaController.atualizar
+);
+
+router.delete(
+  "/:id",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  visitaController.remover
+);
+
+router.get(
+  "/:id/fiscalizadores",
+  autenticar,
+  autorizar("admin", "gestor", "fiscalizador"),
+  validarId,
+  visitaController.listarFiscalizadores
+);
+
+router.post(
+  "/:id/fiscalizadores",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  visitaController.adicionarFiscalizador
+);
+
+router.put(
+  "/:id/fiscalizadores",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  visitaController.substituirFiscalizadores
+);
+
+router.delete(
+  "/:id/fiscalizadores/:fiscalizadorId",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  validarParametroId("fiscalizadorId"),
+  visitaController.removerFiscalizador
 );
 
 router.patch(

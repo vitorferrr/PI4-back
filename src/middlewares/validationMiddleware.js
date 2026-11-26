@@ -199,6 +199,51 @@ export const validarCriacaoVisita = (req, res, next) => {
   return finalizarValidacao(res, next, erros);
 };
 
+export const validarAtualizacaoVisita = (req, res, next) => {
+  if (!ehObjeto(req.body) || Object.keys(req.body).length === 0) {
+    return responderErro(res, 400, "Dados inválidos", [
+      "Informe ao menos um campo para atualizar",
+    ]);
+  }
+
+  const {
+    denunciado,
+    data_agendada,
+    gestor_id,
+    fiscalizadores_ids,
+    fiscalizadores,
+    status,
+  } = req.body;
+  const erros = [];
+
+  if (denunciado !== undefined && !textoPreenchido(denunciado)) {
+    erros.push("O campo denunciado não pode ser vazio");
+  }
+
+  if (data_agendada !== undefined && !dataValida(data_agendada)) {
+    erros.push("Informe uma data_agendada válida no formato ISO 8601");
+  }
+
+  if (gestor_id !== undefined && !inteiroPositivo(gestor_id)) {
+    erros.push("gestor_id deve ser um número inteiro positivo");
+  }
+
+  const listaFiscalizadores = fiscalizadores_ids ?? fiscalizadores;
+  if (
+    listaFiscalizadores !== undefined &&
+    (!Array.isArray(listaFiscalizadores) ||
+      !listaFiscalizadores.every(inteiroPositivo))
+  ) {
+    erros.push("fiscalizadores_ids deve ser uma lista de IDs inteiros positivos");
+  }
+
+  if (status !== undefined && status !== "cancelada") {
+    erros.push("Na edição da visita, o único status permitido é 'cancelada'");
+  }
+
+  return finalizarValidacao(res, next, erros);
+};
+
 export const validarListagemVisitas = (req, res, next) => {
   const { status, gestor_id, fiscalizador_id, limit, offset } =
     req.query ?? {};
