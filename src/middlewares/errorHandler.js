@@ -1,10 +1,6 @@
 import { ZodError } from "zod";
-import AppError from "../utils/appError.js";
-import {
-  criarErroHttp,
-  responderErro,
-  tratarRespostaErro,
-} from "../utils/tratarErro.js";
+import { env } from "../config/index.js";
+import { AppError, criarErroHttp, responderErro, tratarRespostaErro } from "../utils/index.js";
 
 export { criarErroHttp, responderErro, tratarRespostaErro };
 
@@ -12,9 +8,9 @@ const mensagemDoZod = (erro) =>
   [...new Set((erro.issues || erro.errors || []).map((e) => e.message))].join("; ");
 
 const registrarErroDoServidor = (erro) => {
-  if (process.env.NODE_ENV === "test") return;
+  if (env.NODE_ENV === "test") return;
 
-  if (process.env.NODE_ENV !== "production") {
+  if (env.NODE_ENV !== "production") {
     console.error(erro.stack);
   } else {
     console.error(`${erro.name || "Error"}: ${erro.message}`);

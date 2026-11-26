@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { env } from "./env.js";
 
 let contextoAtual;
 let configuracaoAtual;
@@ -27,9 +28,9 @@ const ehChaveServidor = (chave) => {
 // Não lê configuração nem cria cliente durante o import. As demais funções do
 // backend continuam disponíveis quando o Storage não está configurado.
 export const getStorageContext = () => {
-  const url = process.env.SUPABASE_URL?.trim();
-  const chave = process.env.SUPABASE_SECRET_KEY?.trim();
-  const bucket = process.env.SUPABASE_STORAGE_BUCKET?.trim();
+  const url = env.SUPABASE_URL;
+  const chave = env.SUPABASE_SECRET_KEY;
+  const bucket = env.SUPABASE_STORAGE_BUCKET;
 
   try {
     const endereco = new URL(url);

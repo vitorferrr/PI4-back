@@ -1,9 +1,6 @@
 import { Router } from "express";
-import adminController from "../controllers/adminController.js";
-import autenticar from "../middlewares/authMiddleware.js";
-import autorizar from "../middlewares/roleMiddleware.js";
-import validate from "../middlewares/validate.js";
-import { listarVisitasSchema } from "../middlewares/validationSchemas.js";
+import { adminController } from "../controllers/index.js";
+import { autenticar, autorizar, listarVisitasSchema, validate } from "../middlewares/index.js";
 
 const router = Router();
 

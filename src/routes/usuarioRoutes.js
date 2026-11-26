@@ -1,14 +1,14 @@
 import { Router } from "express";
-import usuarioController from "../controllers/usuarioController.js";
-import autenticar from "../middlewares/authMiddleware.js";
-import autorizar from "../middlewares/roleMiddleware.js";
-import validarId from "../middlewares/validarIdMiddleware.js";
-import validate from "../middlewares/validate.js";
+import { usuarioController } from "../controllers/index.js";
 import {
   atualizarUsuarioSchema,
+  autenticar,
+  autorizar,
   criarUsuarioSchema,
   listarUsuariosSchema,
-} from "../middlewares/validationSchemas.js";
+  validarId,
+  validate,
+} from "../middlewares/index.js";
 
 const router = Router();
 

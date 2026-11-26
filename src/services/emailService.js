@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
-import emailValido from "../utils/emailValido.js";
-import erroValidacao from "../utils/erroValidacao.js";
+import { env } from "../config/index.js";
+import { emailValido, erroValidacao } from "../utils/index.js";
 
 const TEMPO_LIMITE_MS = 10_000;
 
@@ -15,13 +15,13 @@ const erroEmail = (codigo, mensagem) => {
 };
 
 const lerConfiguracao = () => {
-  const host = process.env.SMTP_HOST?.trim();
-  const porta = Number(process.env.SMTP_PORT?.trim() || 465);
-  const usuario = process.env.SMTP_USER?.trim();
-  const senha = process.env.SMTP_PASS?.trim();
-  const remetente = process.env.EMAIL_REMETENTE?.trim() || usuario;
-  const destinoTeste = process.env.EMAIL_DESTINO_TESTE?.trim() || null;
-  const envioReal = process.env.EMAIL_ENVIO_REAL?.trim() === "true";
+  const host = env.SMTP_HOST;
+  const porta = Number(env.SMTP_PORT || 465);
+  const usuario = env.SMTP_USER;
+  const senha = env.SMTP_PASS;
+  const remetente = env.EMAIL_REMETENTE || usuario;
+  const destinoTeste = env.EMAIL_DESTINO_TESTE || null;
+  const envioReal = env.EMAIL_ENVIO_REAL;
 
   if (
     !host || !Number.isInteger(porta) || porta < 1 || porta > 65535 ||

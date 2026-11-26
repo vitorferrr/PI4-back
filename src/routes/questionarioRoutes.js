@@ -1,13 +1,13 @@
 import { Router } from "express";
-import questionarioController from "../controllers/questionarioController.js";
-import autenticar from "../middlewares/authMiddleware.js";
-import autorizar from "../middlewares/roleMiddleware.js";
-import validarId from "../middlewares/validarIdMiddleware.js";
-import validate from "../middlewares/validate.js";
+import { questionarioController } from "../controllers/index.js";
 import {
   atualizarPerguntaSchema,
+  autenticar,
+  autorizar,
   criarPerguntaSchema,
-} from "../middlewares/validationSchemas.js";
+  validarId,
+  validate,
+} from "../middlewares/index.js";
 
 const router = Router();
 

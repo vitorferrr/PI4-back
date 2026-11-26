@@ -1,6 +1,5 @@
-import visitaService from "../services/visitaService.js";
-import AppError from "../utils/appError.js";
-import { podeAcessarVisita, podeGerenciarVisita } from "../utils/acessoVisita.js";
+import { visitaService } from "../services/index.js";
+import { AppError, podeAcessarVisita, podeGerenciarVisita } from "../utils/index.js";
 
 
 const verificarVisita = (podeUsar, mensagem) => async (req, res, next) => {

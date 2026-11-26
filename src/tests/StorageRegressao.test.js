@@ -18,6 +18,7 @@ const segredo = "segredo-local-do-teste-sem-storage";
 beforeAll(async () => {
   vi.stubEnv("VERCEL", "1");
   vi.stubEnv("JWT_SECRET", segredo);
+  vi.stubEnv("DATABASE_URL", "postgres://teste:teste@localhost:5432/teste");
   vi.stubEnv("SUPABASE_URL", "");
   vi.stubEnv("SUPABASE_SECRET_KEY", "");
   vi.stubEnv("SUPABASE_STORAGE_BUCKET", "");

@@ -1,5 +1,5 @@
-import usuarioService from "../services/usuarioService.js";
-import AppError from "../utils/appError.js";
+import { usuarioService } from "../services/index.js";
+import { AppError } from "../utils/index.js";
 
 const criar = async (req, res) => {
   const usuario = await usuarioService.criar(req.body);

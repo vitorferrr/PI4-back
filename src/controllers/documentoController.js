@@ -1,6 +1,5 @@
-import documentoService from "../services/documentoService.js";
-import AppError from "../utils/appError.js";
-import { erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
+import { documentoService } from "../services/index.js";
+import { AppError, erroVisitaNaoEncontrada } from "../utils/index.js";
 
 const gerar = async (req, res) => {
   const resultado = await documentoService.gerar(req.visita.id);

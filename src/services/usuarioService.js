@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import models from "../models/index.js";
-import normalizarEmail from "../utils/normalizarEmail.js";
+import { normalizarEmail } from "../utils/index.js";
 
 const { Usuario } = models;
 
