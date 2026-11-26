@@ -204,7 +204,7 @@ describe("salvar respostas do questionário", () => {
         questionarioService.salvarRespostas(10, respostasValidas)
       ).rejects.toMatchObject({
         name: "ValidacaoError",
-        message: "Só é possível responder o questionário de visitas em andamento",
+        message: "As respostas só podem ser alteradas em visitas em andamento",
       });
       expect(RespostaQuestionario.bulkCreate).not.toHaveBeenCalled();
       expect(transacao.rollback).toHaveBeenCalledTimes(1);
@@ -233,7 +233,7 @@ describe("salvar respostas do questionário", () => {
     Visita.findByPk.mockResolvedValue({ id: 10, status: "concluida" });
 
     await expect(questionarioService.salvarRespostas(10, [])).rejects.toMatchObject({
-      message: "Só é possível responder o questionário de visitas em andamento",
+      message: "As respostas só podem ser alteradas em visitas em andamento",
     });
   });
 
@@ -470,7 +470,7 @@ describe("respostas de uma visita (URL composta)", () => {
       Visita.findByPk.mockResolvedValue({ id: 10, status });
 
       await expect(questionarioService.atualizarDaVisita(10, 3, "Sim")).rejects.toMatchObject({
-        message: "Só é possível responder o questionário de visitas em andamento",
+        message: "As respostas só podem ser alteradas em visitas em andamento",
       });
     });
 

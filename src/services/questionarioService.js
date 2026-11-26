@@ -92,7 +92,7 @@ const travarVisitaEditavel = async (visitaId, transaction) => {
   }
 
   if (visita.status !== "em_andamento") {
-    throw erroValidacao("Só é possível responder o questionário de visitas em andamento");
+    throw erroValidacao("As respostas só podem ser alteradas em visitas em andamento");
   }
 
   const documento = await Documento.findOne({
