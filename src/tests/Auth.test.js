@@ -7,6 +7,7 @@ import authService from "../services/authService.js";
 import authController from "../controllers/authController.js";
 import autenticar, { autenticarLogout } from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
+import errorHandler from "../middlewares/errorHandler.js";
 
 vi.mock("../models/index.js", () => ({
   default: {
@@ -30,6 +31,13 @@ const criarRes = () => {
   res.json = vi.fn(() => res);
   return res;
 };
+
+// next() de mentira que faz o que o Express faz: se o middleware chamar
+// next(erro), o erro vai para o errorHandler, que monta a resposta em res.
+const encaminharErro = (res) =>
+  vi.fn((erro) => {
+    if (erro) errorHandler(erro, {}, res, () => {});
+  });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -149,7 +157,7 @@ describe("middleware autenticar", () => {
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO);
     const req = { headers: { authorization: `Bearer ${token}` } };
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar(req, res, next);
 
@@ -159,46 +167,46 @@ describe("middleware autenticar", () => {
 
   it("retorna 401 sem o cabeçalho Authorization", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar({ headers: {} }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Token não informado" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("retorna 401 quando o formato não é Bearer", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar({ headers: { authorization: "Basic abc" } }, res, next);
 
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("retorna 401 para token assinado com outro segredo", () => {
     const token = jwt.sign({ id: 1 }, "outro-segredo");
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar({ headers: { authorization: `Bearer ${token}` } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido ou expirado" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("retorna 401 para token expirado", () => {
     const token = jwt.sign({ id: 1 }, SEGREDO, { expiresIn: -10 });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar({ headers: { authorization: `Bearer ${token}` } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 });
 
@@ -209,14 +217,14 @@ describe("middleware autenticar com logout", () => {
     TokenRevogado.findOne.mockResolvedValue({ id: 1 });
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticar(requisicaoCom(token), res, next);
 
     expect(TokenRevogado.findOne).toHaveBeenCalledWith({ attributes: ["id"], where: { jti: "abc" } });
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Sessão encerrada" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("aceita token com id que não foi encerrado", async () => {
@@ -249,13 +257,13 @@ describe("middleware autenticar com logout", () => {
     TokenRevogado.findOne.mockRejectedValue(erro);
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticar(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(503);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Banco de dados indisponível" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("responde 500 e registra o erro quando a falha não é de conexão", async () => {
@@ -263,14 +271,14 @@ describe("middleware autenticar com logout", () => {
     TokenRevogado.findOne.mockRejectedValue(erro);
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticar(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Erro interno do servidor" });
     expect(console.error).toHaveBeenCalledWith("Falha ao conferir o token revogado:", erro);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("no logout, token já encerrado responde 204 sem passar adiante", async () => {
@@ -278,12 +286,12 @@ describe("middleware autenticar com logout", () => {
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
     const res = criarRes();
     res.send = vi.fn(() => res);
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticarLogout(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(204);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("no logout, token vencido pelo tempo responde 204 sem consultar o banco", async () => {
@@ -292,31 +300,31 @@ describe("middleware autenticar com logout", () => {
     });
     const res = criarRes();
     res.send = vi.fn(() => res);
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticarLogout(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(204);
     expect(TokenRevogado.findOne).not.toHaveBeenCalled();
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("no logout, token com assinatura falsa continua respondendo 401", async () => {
     const token = jwt.sign({ id: 1, role: "admin" }, "outro-segredo", { jwtid: "abc" });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticarLogout(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("fora do logout, token vencido continua respondendo 401", async () => {
     const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, SEGREDO);
     const res = criarRes();
 
-    await autenticar(requisicaoCom(token), res, vi.fn());
+    await autenticar(requisicaoCom(token), res, encaminharErro(res));
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido ou expirado" });
@@ -351,7 +359,7 @@ describe("logout (authService)", () => {
 describe("middleware autorizar", () => {
   it("deixa passar quando o perfil é permitido", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autorizar("admin", "gestor")({ usuario: { role: "gestor" } }, res, next);
 
@@ -360,22 +368,22 @@ describe("middleware autorizar", () => {
 
   it("retorna 403 quando o perfil não é permitido", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autorizar("admin")({ usuario: { role: "fiscalizador" } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("retorna 401 quando não há usuário autenticado", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autorizar("admin")({}, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 });
 

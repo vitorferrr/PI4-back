@@ -42,7 +42,9 @@ describe("inicialização na Vercel", () => {
     vi.stubEnv("VERCEL", "1");
   });
 
-  it("responde normalmente quando o banco conecta", async () => {
+  // Primeiro teste do arquivo: carrega o back inteiro do zero (rotas, Zod, Helmet...).
+  // Com todos os arquivos de teste rodando em paralelo, isso pode passar dos 5 s padrão.
+  it("responde normalmente quando o banco conecta", { timeout: 20000 }, async () => {
     sync.mockResolvedValue();
     const app = await carregarApp();
 
