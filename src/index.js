@@ -1,6 +1,7 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 import { sequelize } from "./models/index.js";
 import usuarioRoutes from "./routes/usuarioRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -12,6 +13,7 @@ import errorHandler from "./middlewares/errorHandler.js";
 
 const app = express();
 
+app.use(helmet());
 app.use(
   cors({
     exposedHeaders: ["X-Total-Count", "X-Truncated", "Content-Disposition"],
