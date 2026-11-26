@@ -13,6 +13,67 @@ const listar = async (req, res) => {
   }
 };
 
+const buscarPorId = async (req, res) => {
+  try {
+    const pergunta = await questionarioService.buscarPorId(req.params.id);
+
+    if (!pergunta) {
+      return res.status(404).json({
+        mensagem: "Pergunta não encontrada",
+      });
+    }
+
+    return res.status(200).json(pergunta);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao buscar pergunta");
+  }
+};
+
+const criar = async (req, res) => {
+  try {
+    const pergunta = await questionarioService.criar(req.body);
+
+    return res.status(201).json(pergunta);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao criar pergunta");
+  }
+};
+
+const atualizar = async (req, res) => {
+  try {
+    const pergunta = await questionarioService.atualizar(
+      req.params.id,
+      req.body
+    );
+
+    if (!pergunta) {
+      return res.status(404).json({
+        mensagem: "Pergunta não encontrada",
+      });
+    }
+
+    return res.status(200).json(pergunta);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao atualizar pergunta");
+  }
+};
+
+const remover = async (req, res) => {
+  try {
+    const pergunta = await questionarioService.remover(req.params.id);
+
+    if (!pergunta) {
+      return res.status(404).json({
+        mensagem: "Pergunta não encontrada",
+      });
+    }
+
+    return res.status(204).send();
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao apagar pergunta");
+  }
+};
+
 const salvarRespostas = async (req, res) => {
   try {
     const visita = await visitaService.buscarParaAcesso(req.params.id);
@@ -33,7 +94,71 @@ const salvarRespostas = async (req, res) => {
   }
 };
 
+const responderRespostaNaoEncontrada = (res) =>
+  res.status(404).json({
+    mensagem: "Resposta não encontrada",
+  });
+
+const comVisitaAcessivel = (mensagemErro, acao) => async (req, res) => {
+  try {
+    const visita = await visitaService.buscarParaAcesso(req.params.id);
+
+    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
+    }
+
+    return await acao(req, res, visita.id, Number(req.params.respostaId));
+  } catch (erro) {
+    return tratarErro(res, erro, mensagemErro);
+  }
+};
+
+const listarRespostas = comVisitaAcessivel("Erro ao listar respostas", async (req, res, visitaId) => {
+  const respostas = await questionarioService.listarDaVisita(visitaId);
+
+  return res.status(200).json(respostas);
+});
+
+const buscarResposta = comVisitaAcessivel(
+  "Erro ao buscar resposta",
+  async (req, res, visitaId, respostaId) => {
+    const resposta = await questionarioService.buscarDaVisita(visitaId, respostaId);
+
+    return resposta ? res.status(200).json(resposta) : responderRespostaNaoEncontrada(res);
+  }
+);
+
+const atualizarResposta = comVisitaAcessivel(
+  "Erro ao atualizar resposta",
+  async (req, res, visitaId, respostaId) => {
+    const resposta = await questionarioService.atualizarDaVisita(
+      visitaId,
+      respostaId,
+      req.body?.resposta
+    );
+
+    return resposta ? res.status(200).json(resposta) : responderRespostaNaoEncontrada(res);
+  }
+);
+
+const removerResposta = comVisitaAcessivel(
+  "Erro ao apagar resposta",
+  async (req, res, visitaId, respostaId) => {
+    const removida = await questionarioService.removerDaVisita(visitaId, respostaId);
+
+    return removida ? res.status(204).send() : responderRespostaNaoEncontrada(res);
+  }
+);
+
 export default {
   listar,
+  buscarPorId,
+  criar,
+  atualizar,
+  remover,
   salvarRespostas,
+  listarRespostas,
+  buscarResposta,
+  atualizarResposta,
+  removerResposta,
 };

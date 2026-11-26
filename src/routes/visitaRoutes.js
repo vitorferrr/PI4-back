@@ -4,8 +4,13 @@ import questionarioController from "../controllers/questionarioController.js";
 import documentoController from "../controllers/documentoController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
-import validarId from "../middlewares/validarIdMiddleware.js";
+import validarId, {
+  validarIdParametro,
+  validarParametroId,
+} from "../middlewares/validarIdMiddleware.js";
 import {
+  validarAtualizacaoResposta,
+  validarAtualizacaoVisita,
   validarCriacaoVisita,
   validarListagemVisitas,
   validarObservacoesVisita,
@@ -36,6 +41,56 @@ router.get(
   autorizar("admin", "gestor", "fiscalizador"),
   validarId,
   visitaController.buscarPorId
+);
+
+router.put(
+  "/:id",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  validarAtualizacaoVisita,
+  visitaController.atualizar
+);
+
+router.delete(
+  "/:id",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  visitaController.remover
+);
+
+router.get(
+  "/:id/fiscalizadores",
+  autenticar,
+  autorizar("admin", "gestor", "fiscalizador"),
+  validarId,
+  visitaController.listarFiscalizadores
+);
+
+router.post(
+  "/:id/fiscalizadores",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  visitaController.adicionarFiscalizador
+);
+
+router.put(
+  "/:id/fiscalizadores",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  visitaController.substituirFiscalizadores
+);
+
+router.delete(
+  "/:id/fiscalizadores/:fiscalizadorId",
+  autenticar,
+  autorizar("admin", "gestor"),
+  validarId,
+  validarParametroId("fiscalizadorId"),
+  visitaController.removerFiscalizador
 );
 
 router.patch(
@@ -70,6 +125,42 @@ router.post(
   validarId,
   validarRespostasQuestionario,
   questionarioController.salvarRespostas
+);
+
+router.get(
+  "/:id/respostas",
+  autenticar,
+  autorizar("admin", "gestor", "fiscalizador"),
+  validarId,
+  questionarioController.listarRespostas
+);
+
+router.get(
+  "/:id/respostas/:respostaId",
+  autenticar,
+  autorizar("admin", "gestor", "fiscalizador"),
+  validarId,
+  validarIdParametro("respostaId"),
+  questionarioController.buscarResposta
+);
+
+router.put(
+  "/:id/respostas/:respostaId",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  validarIdParametro("respostaId"),
+  validarAtualizacaoResposta,
+  questionarioController.atualizarResposta
+);
+
+router.delete(
+  "/:id/respostas/:respostaId",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  validarIdParametro("respostaId"),
+  questionarioController.removerResposta
 );
 
 router.post(

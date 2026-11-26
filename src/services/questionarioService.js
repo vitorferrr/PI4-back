@@ -40,6 +40,109 @@ const listar = async () => {
   });
 };
 
+const TIPOS_RESPOSTA_VALIDOS = Object.keys(FORMATOS);
+
+const validarDadosPergunta = (dados, { parcial = false } = {}) => {
+  if (!dados || typeof dados !== "object" || Array.isArray(dados)) {
+    throw erroValidacao("Dados da pergunta inválidos");
+  }
+
+  const { texto, tipo_resposta, ordem } = dados;
+  const erros = [];
+  const validado = {};
+
+  if (!parcial || texto !== undefined) {
+    if (typeof texto !== "string" || texto.trim() === "") {
+      erros.push("O texto da pergunta é obrigatório");
+    } else {
+      validado.texto = texto.trim();
+    }
+  }
+
+  if (!parcial || tipo_resposta !== undefined) {
+    if (!TIPOS_RESPOSTA_VALIDOS.includes(tipo_resposta)) {
+      erros.push(
+        `tipo_resposta deve ser um dos valores: ${TIPOS_RESPOSTA_VALIDOS.join(", ")}`
+      );
+    } else {
+      validado.tipo_resposta = tipo_resposta;
+    }
+  }
+
+  if (!parcial || ordem !== undefined) {
+    if (!Number.isInteger(ordem) || ordem < 1) {
+      erros.push("ordem deve ser um número inteiro positivo");
+    } else {
+      validado.ordem = ordem;
+    }
+  }
+
+  if (parcial && Object.keys(validado).length === 0 && erros.length === 0) {
+    erros.push("Informe ao menos um campo para atualizar");
+  }
+
+  if (erros.length > 0) {
+    throw erroValidacao(erros[0], erros);
+  }
+
+  return validado;
+};
+
+const buscarPorId = async (id) => {
+  return await PerguntaQuestionario.findByPk(id);
+};
+
+const criar = async (dados) => {
+  const validado = validarDadosPergunta(dados);
+  return await PerguntaQuestionario.create(validado);
+};
+
+const atualizar = async (id, dados) => {
+  const pergunta = await PerguntaQuestionario.findByPk(id);
+  if (!pergunta) {
+    return null;
+  }
+
+  const validado = validarDadosPergunta(dados, { parcial: true });
+
+  if (
+    validado.tipo_resposta !== undefined &&
+    validado.tipo_resposta !== pergunta.tipo_resposta
+  ) {
+    const respostaExistente = await RespostaQuestionario.findOne({
+      attributes: ["id"],
+      where: { pergunta_id: id },
+    });
+
+    if (respostaExistente) {
+      throw erroValidacao(
+        "Pergunta já respondida em visitas; o tipo_resposta não pode ser alterado"
+      );
+    }
+  }
+
+  return await pergunta.update(validado);
+};
+
+const remover = async (id) => {
+  const pergunta = await PerguntaQuestionario.findByPk(id);
+  if (!pergunta) {
+    return null;
+  }
+
+  const respostaExistente = await RespostaQuestionario.findOne({
+    attributes: ["id"],
+    where: { pergunta_id: id },
+  });
+
+  if (respostaExistente) {
+    throw erroValidacao("Pergunta já respondida em visitas; não pode ser apagada");
+  }
+
+  await pergunta.destroy();
+  return pergunta;
+};
+
 const validarLista = (respostas) => {
   const erros = validarListaRespostas(respostas);
   if (erros.length > 0) {
@@ -47,15 +150,7 @@ const validarLista = (respostas) => {
   }
 };
 
-const validarRespostas = async (respostas, transaction) => {
-  validarLista(respostas);
-
-  const perguntas = await PerguntaQuestionario.findAll({
-    where: { id: respostas.map((item) => item.pergunta_id) },
-    transaction,
-  });
-  const perguntasPorId = new Map(perguntas.map((pergunta) => [pergunta.id, pergunta]));
-
+const conferirFormatos = (respostas, perguntasPorId) => {
   const erros = [];
 
   respostas.forEach((item) => {
@@ -77,35 +172,69 @@ const validarRespostas = async (respostas, transaction) => {
   }
 };
 
+const validarRespostas = async (respostas, transaction) => {
+  validarLista(respostas);
+
+  const perguntas = await PerguntaQuestionario.findAll({
+    where: { id: respostas.map((item) => item.pergunta_id) },
+    transaction,
+  });
+
+  conferirFormatos(respostas, new Map(perguntas.map((pergunta) => [pergunta.id, pergunta])));
+};
+
+const includePergunta = {
+  model: PerguntaQuestionario,
+  as: "pergunta",
+  attributes: ["id", "texto", "tipo_resposta", "ordem"],
+};
+
+const listarDaVisita = async (visitaId) =>
+  await RespostaQuestionario.findAll({
+    where: { visita_id: visitaId },
+    include: [includePergunta],
+    order: [[includePergunta, "ordem", "ASC"]],
+  });
+
+const travarVisitaEditavel = async (visitaId, transaction) => {
+  const visita = await Visita.findByPk(visitaId, {
+    attributes: ["id", "status"],
+    transaction,
+    lock: transaction.LOCK.UPDATE,
+  });
+
+  if (!visita) {
+    return null;
+  }
+
+  if (visita.status !== "em_andamento") {
+    throw erroValidacao("As respostas só podem ser alteradas em visitas em andamento");
+  }
+
+  const documento = await Documento.findOne({
+    attributes: ["id"],
+    where: { visita_id: visitaId },
+    transaction,
+  });
+
+  if (documento) {
+    throw erroValidacao(
+      "O documento da visita já foi gerado; as respostas não podem mais ser alteradas"
+    );
+  }
+
+  return visita;
+};
+
 const salvarRespostas = async (visitaId, respostas) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const visita = await Visita.findByPk(visitaId, {
-      attributes: ["id", "status"],
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
+    const visita = await travarVisitaEditavel(visitaId, transaction);
 
     if (!visita) {
       await transaction.rollback();
       return null;
-    }
-
-    if (visita.status !== "em_andamento") {
-      throw erroValidacao("Só é possível responder o questionário de visitas em andamento");
-    }
-
-    const documento = await Documento.findOne({
-      attributes: ["id"],
-      where: { visita_id: visitaId },
-      transaction,
-    });
-
-    if (documento) {
-      throw erroValidacao(
-        "O documento da visita já foi gerado; as respostas não podem mais ser alteradas"
-      );
     }
 
     await validarRespostas(respostas, transaction);
@@ -129,13 +258,66 @@ const salvarRespostas = async (visitaId, respostas) => {
     throw erro;
   }
 
-  return await RespostaQuestionario.findAll({
-    where: { visita_id: visitaId },
-    order: [["pergunta_id", "ASC"]],
-  });
+  return await listarDaVisita(visitaId);
 };
+
+const buscarDaVisita = async (visitaId, respostaId, transaction) =>
+  await RespostaQuestionario.findOne({
+    where: { id: respostaId, visita_id: visitaId },
+    include: [includePergunta],
+    transaction,
+  });
+
+const alterarDaVisita = async (visitaId, respostaId, alteracao) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await travarVisitaEditavel(visitaId, transaction);
+    const resposta = visita && (await buscarDaVisita(visitaId, respostaId, transaction));
+
+    if (!resposta) {
+      await transaction.rollback();
+      return null;
+    }
+
+    const resultado = await alteracao(resposta, transaction);
+    await transaction.commit();
+
+    return resultado;
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+};
+
+const atualizarDaVisita = async (visitaId, respostaId, valor) =>
+  await alterarDaVisita(visitaId, respostaId, async (resposta, transaction) => {
+    const item = { pergunta_id: resposta.pergunta_id, resposta: valor };
+
+    validarLista([item]);
+    conferirFormatos([item], new Map([[resposta.pergunta_id, resposta.pergunta]]));
+
+    await resposta.update({ resposta: valor.trim() }, { transaction });
+
+    return resposta;
+  });
+
+const removerDaVisita = async (visitaId, respostaId) =>
+  await alterarDaVisita(visitaId, respostaId, async (resposta, transaction) => {
+    await resposta.destroy({ transaction });
+
+    return true;
+  });
 
 export default {
   listar,
+  buscarPorId,
+  criar,
+  atualizar,
+  remover,
   salvarRespostas,
+  listarDaVisita,
+  buscarDaVisita,
+  atualizarDaVisita,
+  removerDaVisita,
 };

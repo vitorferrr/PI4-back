@@ -6,6 +6,7 @@ import erroValidacao from "../utils/erroValidacao.js";
 import { validarImagemAssinatura } from "../utils/validarImagemAssinatura.js";
 import { enviarDocumentoVisita } from "./emailService.js";
 import pdfService from "./pdfService.js";
+import questionarioService from "./questionarioService.js";
 import { baixarArquivo, removerArquivo, uploadArquivo } from "./storageService.js";
 
 const { Assinatura, Documento, PerguntaQuestionario, RespostaQuestionario, Visita } = models;
@@ -220,11 +221,7 @@ const gerarPdfFinal = async (documentoId, usuario) => {
 
   if (pendentes.length > 0) return { ...contexto, pendentes, gerado: false };
 
-  const respostas = await RespostaQuestionario.findAll({
-    where: { visita_id: visita.id },
-    include: [{ model: PerguntaQuestionario, as: "pergunta", attributes: ["texto", "ordem"] }],
-    order: [[{ model: PerguntaQuestionario, as: "pergunta" }, "ordem", "ASC"]],
-  });
+  const respostas = await questionarioService.listarDaVisita(visita.id);
   const pdf = await pdfService.gerarDocumentoVisita(await montarDadosDoPdf(contexto, respostas));
   const arquivo = await uploadArquivo({
     conteudo: pdf,

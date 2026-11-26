@@ -3,6 +3,7 @@ import { PNG } from "pngjs";
 import models, { sequelize } from "../models/index.js";
 import documentoService from "../services/documentoService.js";
 import pdfService from "../services/pdfService.js";
+import questionarioService from "../services/questionarioService.js";
 import { enviarDocumentoVisita } from "../services/emailService.js";
 import { baixarArquivo, removerArquivo, uploadArquivo } from "../services/storageService.js";
 
@@ -143,6 +144,15 @@ describe("finalizar documento", () => {
       recebimento: { nome: "Carlos", recusou: false },
     });
     gerar.mockRestore();
+  });
+
+  it("busca as respostas pela mesma consulta do GET de respostas", async () => {
+    const listarDaVisita = vi.spyOn(questionarioService, "listarDaVisita");
+
+    await documentoService.finalizar(7);
+
+    expect(listarDaVisita).toHaveBeenCalledWith(10);
+    listarDaVisita.mockRestore();
   });
 
   it("lista o que falta sem gerar PDF nem abrir transação", async () => {

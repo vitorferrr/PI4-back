@@ -21,10 +21,13 @@ vi.mock("../models/index.js", () => {
       },
       PerguntaQuestionario: {
         findAll: vi.fn(),
+        findByPk: vi.fn(),
+        create: vi.fn(),
       },
       RespostaQuestionario: {
         bulkCreate: vi.fn(),
         findAll: vi.fn(),
+        findOne: vi.fn(),
       },
       Visita: {
         findByPk: vi.fn(),
@@ -181,8 +184,28 @@ describe("salvar respostas do questionário", () => {
     expect(transacao.rollback).not.toHaveBeenCalled();
     expect(RespostaQuestionario.findAll).toHaveBeenCalledWith({
       where: { visita_id: 10 },
-      order: [["pergunta_id", "ASC"]],
+      include: [
+        {
+          model: PerguntaQuestionario,
+          as: "pergunta",
+          attributes: ["id", "texto", "tipo_resposta", "ordem"],
+        },
+      ],
+      order: [
+        [
+          {
+            model: PerguntaQuestionario,
+            as: "pergunta",
+            attributes: ["id", "texto", "tipo_resposta", "ordem"],
+          },
+          "ordem",
+          "ASC",
+        ],
+      ],
     });
+    expect(RespostaQuestionario.findAll.mock.invocationCallOrder[0]).toBeGreaterThan(
+      transacao.commit.mock.invocationCallOrder[0]
+    );
     expect(resultado).toEqual([{ pergunta_id: 1 }]);
   });
 
@@ -203,7 +226,7 @@ describe("salvar respostas do questionário", () => {
         questionarioService.salvarRespostas(10, respostasValidas)
       ).rejects.toMatchObject({
         name: "ValidacaoError",
-        message: "Só é possível responder o questionário de visitas em andamento",
+        message: "As respostas só podem ser alteradas em visitas em andamento",
       });
       expect(RespostaQuestionario.bulkCreate).not.toHaveBeenCalled();
       expect(transacao.rollback).toHaveBeenCalledTimes(1);
@@ -232,7 +255,7 @@ describe("salvar respostas do questionário", () => {
     Visita.findByPk.mockResolvedValue({ id: 10, status: "concluida" });
 
     await expect(questionarioService.salvarRespostas(10, [])).rejects.toMatchObject({
-      message: "Só é possível responder o questionário de visitas em andamento",
+      message: "As respostas só podem ser alteradas em visitas em andamento",
     });
   });
 
@@ -336,5 +359,297 @@ describe("questionarioController.salvarRespostas", () => {
     await questionarioController.salvarRespostas(req, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
+  });
+});
+
+describe("CRUD de perguntas (questionarioService)", () => {
+  it("busca pergunta por id", async () => {
+    const pergunta = { id: 1, texto: "Tem alvará?", tipo_resposta: "sim_nao", ordem: 1 };
+    models.PerguntaQuestionario.findByPk.mockResolvedValueOnce(pergunta);
+
+    const resultado = await questionarioService.buscarPorId(1);
+
+    expect(resultado).toEqual(pergunta);
+    expect(models.PerguntaQuestionario.findByPk).toHaveBeenCalledWith(1);
+  });
+
+  it("cria pergunta válida com texto normalizado", async () => {
+    const criada = { id: 2, texto: "Possui validade?", tipo_resposta: "sim_nao", ordem: 2 };
+    models.PerguntaQuestionario.create.mockResolvedValueOnce(criada);
+
+    const resultado = await questionarioService.criar({
+      texto: "  Possui validade?  ",
+      tipo_resposta: "sim_nao",
+      ordem: 2,
+    });
+
+    expect(models.PerguntaQuestionario.create).toHaveBeenCalledWith({
+      texto: "Possui validade?",
+      tipo_resposta: "sim_nao",
+      ordem: 2,
+    });
+    expect(resultado).toEqual(criada);
+  });
+
+  it("rejeita criação com texto vazio, tipo_resposta inválido ou ordem não inteira", async () => {
+    await expect(
+      questionarioService.criar({
+        texto: "  ",
+        tipo_resposta: "multipla_escolha",
+        ordem: 0,
+      })
+    ).rejects.toMatchObject({
+      name: "ValidacaoError",
+      errors: [
+        { message: "O texto da pergunta é obrigatório" },
+        {
+          message:
+            "tipo_resposta deve ser um dos valores: sim_nao, numero, data, texto",
+        },
+        { message: "ordem deve ser um número inteiro positivo" },
+      ],
+    });
+  });
+
+  it("atualiza pergunta existente e retorna null se não existir", async () => {
+    const update = vi.fn().mockResolvedValueOnce({ id: 1, texto: "Editada", ordem: 3 });
+    models.PerguntaQuestionario.findByPk
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 1, update });
+
+    expect(await questionarioService.atualizar(99, { texto: "Editada" })).toBeNull();
+
+    const atualizada = await questionarioService.atualizar(1, {
+      texto: " Editada ",
+      ordem: 3,
+    });
+
+    expect(update).toHaveBeenCalledWith({ texto: "Editada", ordem: 3 });
+    expect(atualizada).toEqual({ id: 1, texto: "Editada", ordem: 3 });
+  });
+
+  it("remove pergunta sem respostas vinculadas", async () => {
+    const destroy = vi.fn().mockResolvedValueOnce();
+    const pergunta = { id: 1, destroy };
+    models.PerguntaQuestionario.findByPk.mockResolvedValueOnce(pergunta);
+    models.RespostaQuestionario.findOne.mockResolvedValueOnce(null);
+
+    const removida = await questionarioService.remover(1);
+
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(removida).toBe(pergunta);
+  });
+
+  it("recusa remoção quando a pergunta já foi respondida em visitas", async () => {
+    const destroy = vi.fn();
+    models.PerguntaQuestionario.findByPk.mockResolvedValueOnce({ id: 1, destroy });
+    models.RespostaQuestionario.findOne.mockResolvedValueOnce({ id: 42 });
+
+    await expect(questionarioService.remover(1)).rejects.toThrow(
+      "Pergunta já respondida em visitas; não pode ser apagada"
+    );
+    expect(destroy).not.toHaveBeenCalled();
+  });
+
+  it("recusa alterar tipo_resposta quando a pergunta já foi respondida em visitas", async () => {
+    const update = vi.fn();
+    models.PerguntaQuestionario.findByPk.mockResolvedValueOnce({
+      id: 1,
+      tipo_resposta: "sim_nao",
+      update,
+    });
+    models.RespostaQuestionario.findOne.mockResolvedValueOnce({ id: 42 });
+
+    await expect(
+      questionarioService.atualizar(1, { tipo_resposta: "numero" })
+    ).rejects.toThrow(
+      "Pergunta já respondida em visitas; o tipo_resposta não pode ser alterado"
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("respostas de uma visita (URL composta)", () => {
+  const includePergunta = {
+    model: PerguntaQuestionario,
+    as: "pergunta",
+    attributes: ["id", "texto", "tipo_resposta", "ordem"],
+  };
+
+  const respostaFalsa = (tipo_resposta, dados = {}) => ({
+    id: 3,
+    visita_id: 10,
+    pergunta_id: 2,
+    resposta: "antiga",
+    pergunta: { id: 2, tipo_resposta },
+    update: vi.fn(async function (novos) {
+      Object.assign(this, novos);
+    }),
+    destroy: vi.fn(),
+    ...dados,
+  });
+
+  beforeEach(() => {
+    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
+    Documento.findOne.mockResolvedValue(null);
+  });
+
+  it("lista as respostas da visita com a pergunta, na ordem do questionário", async () => {
+    RespostaQuestionario.findAll.mockResolvedValue([{ id: 1 }]);
+
+    expect(await questionarioService.listarDaVisita(10)).toEqual([{ id: 1 }]);
+    expect(RespostaQuestionario.findAll).toHaveBeenCalledWith({
+      where: { visita_id: 10 },
+      include: [includePergunta],
+      order: [[includePergunta, "ordem", "ASC"]],
+    });
+  });
+
+  it("busca a resposta só dentro da visita da URL", async () => {
+    RespostaQuestionario.findOne.mockResolvedValue(null);
+
+    expect(await questionarioService.buscarDaVisita(10, 3)).toBeNull();
+    expect(RespostaQuestionario.findOne).toHaveBeenCalledWith({
+      where: { id: 3, visita_id: 10 },
+      include: [includePergunta],
+      transaction: undefined,
+    });
+  });
+
+  describe("atualizar", () => {
+    it("trava a visita, valida pelo tipo da pergunta e grava sem espaços nas pontas", async () => {
+      const resposta = respostaFalsa("numero");
+      RespostaQuestionario.findOne.mockResolvedValue(resposta);
+
+      const resultado = await questionarioService.atualizarDaVisita(10, 3, " 4,5 ");
+
+      expect(Visita.findByPk).toHaveBeenCalledWith(10, {
+        attributes: ["id", "status"],
+        transaction: transacao,
+        lock: transacao.LOCK.UPDATE,
+      });
+      expect(RespostaQuestionario.findOne).toHaveBeenCalledWith({
+        where: { id: 3, visita_id: 10 },
+        include: [includePergunta],
+        transaction: transacao,
+      });
+      expect(resposta.update).toHaveBeenCalledWith({ resposta: "4,5" }, { transaction: transacao });
+      expect(transacao.commit).toHaveBeenCalledTimes(1);
+      expect(resultado.resposta).toBe("4,5");
+    });
+
+    it.each([
+      ["sim_nao", "Talvez", 'Resposta da pergunta 2 deve ser "Sim", "Não" ou "Não se aplica"'],
+      ["numero", "dez", "Resposta da pergunta 2 deve ser um número"],
+      ["data", "31/02/2026", "Resposta da pergunta 2 deve ser uma data válida no formato DD/MM/AAAA"],
+    ])("rejeita resposta fora do formato %s, com a mesma regra do POST", async (tipo, valor, mensagem) => {
+      const resposta = respostaFalsa(tipo);
+      RespostaQuestionario.findOne.mockResolvedValue(resposta);
+
+      await expect(questionarioService.atualizarDaVisita(10, 3, valor)).rejects.toMatchObject({
+        name: "ValidacaoError",
+        message: "Há respostas inválidas",
+        errors: [{ message: mensagem }],
+      });
+      expect(resposta.update).not.toHaveBeenCalled();
+      expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([[undefined], [""], ["   "], [5]])(
+      "rejeita resposta vazia ou que não é texto (%o) sem gravar",
+      async (valor) => {
+        const resposta = respostaFalsa("texto");
+        RespostaQuestionario.findOne.mockResolvedValue(resposta);
+
+        await expect(questionarioService.atualizarDaVisita(10, 3, valor)).rejects.toMatchObject({
+          name: "ValidacaoError",
+          message: "Resposta 1: a resposta deve ser um texto preenchido",
+        });
+        expect(resposta.update).not.toHaveBeenCalled();
+        expect(transacao.rollback).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it("confere se a resposta existe antes de olhar o valor", async () => {
+      RespostaQuestionario.findOne.mockResolvedValue(null);
+
+      expect(await questionarioService.atualizarDaVisita(10, 3, "")).toBeNull();
+    });
+
+    it("confere a situação da visita antes de olhar o valor", async () => {
+      Visita.findByPk.mockResolvedValue({ id: 10, status: "concluida" });
+
+      await expect(questionarioService.atualizarDaVisita(10, 3, "")).rejects.toMatchObject({
+        name: "ValidacaoError",
+      });
+      expect(RespostaQuestionario.findOne).not.toHaveBeenCalled();
+    });
+
+    it("rejeita depois que o documento foi gerado", async () => {
+      Documento.findOne.mockResolvedValue({ id: 7 });
+
+      await expect(questionarioService.atualizarDaVisita(10, 3, "Sim")).rejects.toMatchObject({
+        message: "O documento da visita já foi gerado; as respostas não podem mais ser alteradas",
+      });
+      expect(RespostaQuestionario.findOne).not.toHaveBeenCalled();
+      expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(["agendada", "concluida", "cancelada"])("rejeita visita %s", async (status) => {
+      Visita.findByPk.mockResolvedValue({ id: 10, status });
+
+      await expect(questionarioService.atualizarDaVisita(10, 3, "Sim")).rejects.toMatchObject({
+        message: "As respostas só podem ser alteradas em visitas em andamento",
+      });
+    });
+
+    it("devolve null quando a resposta não é da visita", async () => {
+      RespostaQuestionario.findOne.mockResolvedValue(null);
+
+      expect(await questionarioService.atualizarDaVisita(10, 3, "Sim")).toBeNull();
+      expect(transacao.rollback).toHaveBeenCalledTimes(1);
+      expect(transacao.commit).not.toHaveBeenCalled();
+    });
+
+    it("devolve null quando a visita sumiu", async () => {
+      Visita.findByPk.mockResolvedValue(null);
+
+      expect(await questionarioService.atualizarDaVisita(10, 3, "Sim")).toBeNull();
+      expect(RespostaQuestionario.findOne).not.toHaveBeenCalled();
+    });
+
+    it("desfaz a transação quando a gravação falha", async () => {
+      const resposta = respostaFalsa("texto");
+      resposta.update.mockRejectedValue(new Error("falha"));
+      RespostaQuestionario.findOne.mockResolvedValue(resposta);
+
+      await expect(questionarioService.atualizarDaVisita(10, 3, "ok")).rejects.toThrow("falha");
+      expect(transacao.rollback).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("remover", () => {
+    it("apaga a resposta da visita dentro da transação", async () => {
+      const resposta = respostaFalsa("texto");
+      RespostaQuestionario.findOne.mockResolvedValue(resposta);
+
+      expect(await questionarioService.removerDaVisita(10, 3)).toBe(true);
+      expect(resposta.destroy).toHaveBeenCalledWith({ transaction: transacao });
+      expect(transacao.commit).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejeita depois que o documento foi gerado", async () => {
+      Documento.findOne.mockResolvedValue({ id: 7 });
+
+      await expect(questionarioService.removerDaVisita(10, 3)).rejects.toMatchObject({
+        name: "ValidacaoError",
+      });
+    });
+
+    it("devolve null quando a resposta não é da visita", async () => {
+      RespostaQuestionario.findOne.mockResolvedValue(null);
+
+      expect(await questionarioService.removerDaVisita(10, 3)).toBeNull();
+    });
   });
 });

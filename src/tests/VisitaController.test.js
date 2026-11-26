@@ -11,9 +11,15 @@ vi.mock("../services/visitaService.js", () => ({
     listar: vi.fn(),
     buscarPorId: vi.fn(),
     buscarParaAcesso: vi.fn(),
+    atualizar: vi.fn(),
+    remover: vi.fn(),
     iniciar: vi.fn(),
     concluir: vi.fn(),
     salvarObservacoes: vi.fn(),
+    listarFiscalizadores: vi.fn(),
+    adicionarFiscalizador: vi.fn(),
+    substituirFiscalizadores: vi.fn(),
+    removerFiscalizador: vi.fn(),
   },
 }));
 
@@ -523,5 +529,218 @@ describe("PATCH /visitas/:id/observacoes", () => {
       mensagem: "Erro ao salvar observações",
       erros: [erro.message],
     });
+  });
+});
+
+describe("PUT /visitas/:id", () => {
+  it("atualiza a visita para o gestor dono e retorna 200", async () => {
+    const visitaAtualizada = { id: 10, gestor_id: 1, denunciado: "Novo Nome" };
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 1 });
+    visitaService.atualizar.mockResolvedValue(visitaAtualizada);
+
+    const resposta = await requisitar("PUT", "/10", "gestor", 1, {
+      denunciado: "Novo Nome",
+      fiscalizadores_ids: [5],
+    });
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual(visitaAtualizada);
+    expect(visitaService.atualizar).toHaveBeenCalledWith(
+      "10",
+      { denunciado: "Novo Nome" },
+      [5]
+    );
+  });
+
+  it("permite que admin atualize visita de qualquer gestor", async () => {
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 99 });
+    visitaService.atualizar.mockResolvedValue({ id: 10, denunciado: "Admin Editou" });
+
+    const resposta = await requisitar("PUT", "/10", "admin", 1, {
+      denunciado: "Admin Editou",
+    });
+
+    expect(resposta.status).toBe(200);
+    expect(visitaService.atualizar).toHaveBeenCalledWith(
+      "10",
+      { denunciado: "Admin Editou" },
+      undefined
+    );
+  });
+
+  it("responde 404 quando outro gestor tenta atualizar visita que não é dele", async () => {
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 99 });
+
+    const resposta = await requisitar("PUT", "/10", "gestor", 1, {
+      denunciado: "Invasão",
+    });
+
+    expect(resposta.status).toBe(404);
+    expect(visitaService.atualizar).not.toHaveBeenCalled();
+  });
+
+  it("responde 403 para fiscalizador sem chamar o service", async () => {
+    const resposta = await requisitar("PUT", "/10", "fiscalizador", 5, {
+      denunciado: "Teste",
+    });
+
+    expect(resposta.status).toBe(403);
+    expect(visitaService.buscarPorId).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o documento já foi gerado", async () => {
+    const erro = new Error(
+      "O documento da visita já foi gerado; a visita não pode mais ser editada"
+    );
+    erro.name = "ValidacaoError";
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 1 });
+    visitaService.atualizar.mockRejectedValue(erro);
+
+    const resposta = await requisitar("PUT", "/10", "gestor", 1, {
+      denunciado: "Novo",
+    });
+
+    expect(resposta.status).toBe(400);
+  });
+
+  it("responde 400 para id inválido", async () => {
+    const resposta = await requisitar("PUT", "/abc", "admin", 1, {
+      denunciado: "Novo",
+    });
+
+    expect(resposta.status).toBe(400);
+    expect(visitaService.buscarPorId).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o corpo é vazio ou data_agendada é inválida", async () => {
+    const vazio = await requisitar("PUT", "/10", "admin", 1, {});
+    expect(vazio.status).toBe(400);
+
+    const dataInvalida = await requisitar("PUT", "/10", "admin", 1, {
+      data_agendada: "amanha",
+    });
+    expect(dataInvalida.status).toBe(400);
+    expect(visitaService.buscarPorId).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /visitas/:id", () => {
+  it("remove a visita para o gestor dono e retorna 204", async () => {
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 1 });
+    visitaService.remover.mockResolvedValue({ id: 10 });
+
+    const resposta = await requisitar("DELETE", "/10", "gestor", 1);
+
+    expect(resposta.status).toBe(204);
+    expect(visitaService.remover).toHaveBeenCalledWith("10");
+  });
+
+  it("permite que admin remova visita de qualquer gestor", async () => {
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 99 });
+    visitaService.remover.mockResolvedValue({ id: 10 });
+
+    const resposta = await requisitar("DELETE", "/10", "admin", 1);
+
+    expect(resposta.status).toBe(204);
+  });
+
+  it("responde 404 quando outro gestor tenta remover visita que não é dele", async () => {
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 99 });
+
+    const resposta = await requisitar("DELETE", "/10", "gestor", 1);
+
+    expect(resposta.status).toBe(404);
+    expect(visitaService.remover).not.toHaveBeenCalled();
+  });
+
+  it("responde 404 quando a visita não existe", async () => {
+    visitaService.buscarPorId.mockResolvedValue(null);
+
+    const resposta = await requisitar("DELETE", "/99", "admin", 1);
+
+    expect(resposta.status).toBe(404);
+  });
+
+  it("responde 403 para fiscalizador sem chamar o service", async () => {
+    const resposta = await requisitar("DELETE", "/10", "fiscalizador", 5);
+
+    expect(resposta.status).toBe(403);
+    expect(visitaService.buscarPorId).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o documento já foi gerado", async () => {
+    const erro = new Error(
+      "O documento da visita já foi gerado; a visita não pode mais ser apagada"
+    );
+    erro.name = "ValidacaoError";
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 1 });
+    visitaService.remover.mockRejectedValue(erro);
+
+    const resposta = await requisitar("DELETE", "/10", "gestor", 1);
+
+    expect(resposta.status).toBe(400);
+  });
+});
+
+describe("rotas compostas /visitas/:id/fiscalizadores (DT-06)", () => {
+  it("GET /visitas/:id/fiscalizadores permite fiscalizador associado e bloqueia não associado (404)", async () => {
+    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
+    visitaService.listarFiscalizadores.mockResolvedValue([{ id: 5, nome: "Ana" }]);
+
+    const ok = await requisitar("GET", "/10/fiscalizadores", "fiscalizador", 5);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual([{ id: 5, nome: "Ana" }]);
+
+    const outro = await requisitar("GET", "/10/fiscalizadores", "fiscalizador", 6);
+    expect(outro.status).toBe(404);
+  });
+
+  it("POST /visitas/:id/fiscalizadores vincula fiscalizador para gestor dono (201) e bloqueia outro gestor (404)", async () => {
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 1 });
+    visitaService.adicionarFiscalizador.mockResolvedValue([{ id: 5, nome: "Ana" }]);
+
+    const ok = await requisitar("POST", "/10/fiscalizadores", "gestor", 1, {
+      fiscalizadorId: 5,
+    });
+    expect(ok.status).toBe(201);
+    expect(visitaService.adicionarFiscalizador).toHaveBeenCalledWith("10", 5);
+
+    const outroGestor = await requisitar("POST", "/10/fiscalizadores", "gestor", 2, {
+      fiscalizadorId: 5,
+    });
+    expect(outroGestor.status).toBe(404);
+  });
+
+  it("PUT /visitas/:id/fiscalizadores substitui fiscalizadores para admin (200)", async () => {
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 99 });
+    visitaService.substituirFiscalizadores.mockResolvedValue([{ id: 7, nome: "Bruno" }]);
+
+    const resposta = await requisitar("PUT", "/10/fiscalizadores", "admin", 1, {
+      fiscalizadoresIds: [7],
+    });
+
+    expect(resposta.status).toBe(200);
+    expect(visitaService.substituirFiscalizadores).toHaveBeenCalledWith("10", [7]);
+  });
+
+  it("DELETE /visitas/:id/fiscalizadores/:fiscalizadorId remove (204), retorna 404 se não vinculado e 400 para id inválido", async () => {
+    visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 1 });
+    visitaService.removerFiscalizador.mockResolvedValueOnce({ removido: true });
+
+    const ok = await requisitar("DELETE", "/10/fiscalizadores/5", "gestor", 1);
+    expect(ok.status).toBe(204);
+
+    visitaService.removerFiscalizador.mockResolvedValueOnce({ naoVinculado: true });
+    const naoVinculado = await requisitar("DELETE", "/10/fiscalizadores/99", "gestor", 1);
+    expect(naoVinculado.status).toBe(404);
+
+    const invalido = await requisitar("DELETE", "/10/fiscalizadores/abc", "gestor", 1);
+    expect(invalido.status).toBe(400);
+  });
+
+  it("POST/PUT/DELETE /visitas/:id/fiscalizadores respondem 403 para fiscalizador", async () => {
+    expect((await requisitar("POST", "/10/fiscalizadores", "fiscalizador", 5, { fiscalizadorId: 5 })).status).toBe(403);
+    expect((await requisitar("PUT", "/10/fiscalizadores", "fiscalizador", 5, { fiscalizadoresIds: [5] })).status).toBe(403);
+    expect((await requisitar("DELETE", "/10/fiscalizadores/5", "fiscalizador", 5)).status).toBe(403);
   });
 });

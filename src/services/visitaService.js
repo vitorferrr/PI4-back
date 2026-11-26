@@ -190,19 +190,37 @@ const buscarPorId = async (id) => {
 const CAMPOS_EDITAVEIS = [
   "denunciado",
   "gestor_id",
-  "status",
-  "latitude",
-  "longitude",
   "data_agendada",
-  "data_realizacao",
   "observacoes_livres",
   ...CAMPOS_ESTABELECIMENTO,
 ];
+
+const validarGestor = async (gestorId, transaction) => {
+  const gestor = Number.isInteger(gestorId) && gestorId > 0
+    ? await Usuario.findByPk(gestorId, {
+        attributes: ["id", "role"],
+        transaction,
+      })
+    : null;
+
+  if (gestor?.role !== "gestor") {
+    throw erroValidacao("O gestor informado não existe ou não possui perfil de gestor");
+  }
+};
 
 const atualizar = async (id, dados, fiscalizadoresIds) => {
   if (fiscalizadoresIds !== undefined) await validarFiscalizadores(fiscalizadoresIds);
 
   const dadosAtualizados = escolherCampos(dados, CAMPOS_EDITAVEIS);
+
+  if (dados.status !== undefined) {
+    if (dados.status !== "cancelada") {
+      throw erroValidacao(
+        "Na edição da visita, o único status permitido é 'cancelada'"
+      );
+    }
+    dadosAtualizados.status = "cancelada";
+  }
 
   const transaction = await sequelize.transaction();
 
@@ -212,6 +230,21 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
     if (!visita) {
       await transaction.rollback();
       return null;
+    }
+
+    if (dadosAtualizados.gestor_id !== undefined) {
+      await validarGestor(dadosAtualizados.gestor_id, transaction);
+    }
+
+    if (
+      dadosAtualizados.status === "cancelada" &&
+      !["agendada", "em_andamento"].includes(visita.status)
+    ) {
+      throw erroValidacao("Somente visitas agendadas ou em andamento podem ser canceladas");
+    }
+
+    if (fiscalizadoresIds !== undefined && visita.status !== "agendada") {
+      throw erroValidacao("Só é possível alterar fiscalizadores de visitas agendadas");
     }
 
     const documento = await Documento.findOne({
@@ -400,15 +433,188 @@ const salvarObservacoes = async (id, observacoes) => {
 };
 
 const remover = async (id) => {
-  const visita = await Visita.findByPk(id);
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    if (visita.status !== "agendada") {
+      throw erroValidacao("Somente visitas agendadas podem ser apagadas");
+    }
+
+    const documento = await Documento.findOne({
+      attributes: ["id"],
+      where: { visita_id: id },
+      transaction,
+    });
+
+    if (documento) {
+      throw erroValidacao(
+        "O documento da visita já foi gerado; a visita não pode mais ser apagada"
+      );
+    }
+
+    await visita.destroy({ transaction });
+    await transaction.commit();
+
+    return visita;
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+};
+
+const garantirDocumentoNaoGerado = async (visita, transaction) => {
+  if (visita.status !== "agendada") {
+    throw erroValidacao(
+      "Só é possível alterar fiscalizadores de visitas agendadas"
+    );
+  }
+
+  const documento = await Documento.findOne({
+    attributes: ["id"],
+    where: { visita_id: visita.id },
+    transaction,
+  });
+
+  if (documento) {
+    throw erroValidacao(
+      "O documento da visita já foi gerado; os fiscalizadores não podem mais ser alterados"
+    );
+  }
+};
+
+const listarFiscalizadores = async (visitaId) => {
+  const visita = await Visita.findByPk(visitaId, { attributes: ["id"] });
 
   if (!visita) {
     return null;
   }
 
-  await visita.destroy();
+  return await visita.getFiscalizadores({
+    attributes: { exclude: ["senha_hash"] },
+    joinTableAttributes: [],
+  });
+};
 
-  return visita;
+const adicionarFiscalizador = async (visitaId, fiscalizadorId) => {
+  await validarFiscalizadores([fiscalizadorId]);
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(visitaId, {
+      attributes: ["id", "status"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    await garantirDocumentoNaoGerado(visita, transaction);
+
+    const atuais = await visita.getFiscalizadores({
+      attributes: ["id"],
+      joinTableAttributes: [],
+      transaction,
+    });
+
+    if (atuais.length >= QUANTIDADE_FISCALIZADORES) {
+      throw erroValidacao(
+        "A visita já possui fiscalizador vinculado; utilize PUT para substituí-lo"
+      );
+    }
+
+    await visita.addFiscalizador(fiscalizadorId, { transaction });
+    await transaction.commit();
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+
+  return await listarFiscalizadores(visitaId);
+};
+
+const substituirFiscalizadores = async (visitaId, fiscalizadoresIds) => {
+  await validarFiscalizadores(fiscalizadoresIds);
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(visitaId, {
+      attributes: ["id", "status"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    await garantirDocumentoNaoGerado(visita, transaction);
+
+    await visita.setFiscalizadores([...new Set(fiscalizadoresIds)], {
+      transaction,
+    });
+    await transaction.commit();
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+
+  return await listarFiscalizadores(visitaId);
+};
+
+const removerFiscalizador = async (visitaId, fiscalizadorId) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(visitaId, {
+      attributes: ["id", "status"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    await garantirDocumentoNaoGerado(visita, transaction);
+
+    const idFiscalizador = Number(fiscalizadorId);
+    const vinculados = await visita.getFiscalizadores({
+      attributes: ["id"],
+      where: { id: idFiscalizador },
+      joinTableAttributes: [],
+      transaction,
+    });
+
+    if (vinculados.length === 0) {
+      await transaction.rollback();
+      return { naoVinculado: true };
+    }
+
+    await visita.removeFiscalizador(idFiscalizador, { transaction });
+    await transaction.commit();
+
+    return { removido: true };
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
 };
 
 export default {
@@ -421,4 +627,8 @@ export default {
   concluir,
   salvarObservacoes,
   remover,
+  listarFiscalizadores,
+  adicionarFiscalizador,
+  substituirFiscalizadores,
+  removerFiscalizador,
 };
