@@ -1,5 +1,4 @@
 import "dotenv/config";
-import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { sequelize } from "./models/index.js";
@@ -11,15 +10,16 @@ import adminRoutes from "./routes/adminRoutes.js";
 import documentoRoutes from "./routes/documentoRoutes.js";
 import errorHandler from "./middlewares/errorHandler.js";
 import notFoundMiddleware from "./middlewares/notFound.js";
+import { limiterMiddleware } from "./middlewares/rateLimiter.js";
+import corsMiddleware from "./middlewares/cors.js";
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 app.use(helmet());
-app.use(
-  cors({
-    exposedHeaders: ["X-Total-Count", "X-Truncated", "Content-Disposition"],
-  })
-);
+app.use(corsMiddleware);
+app.use(limiterMiddleware);
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(async (req, res, next) => {
