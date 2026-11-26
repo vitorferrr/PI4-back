@@ -27,6 +27,7 @@ vi.mock("../models/index.js", () => {
         findOne: vi.fn(),
       },
       RespostaQuestionario: {},
+      Assinatura: {},
     },
   };
 });
@@ -247,6 +248,41 @@ describe("buscar visita por id", () => {
 
     expect(resultado).toEqual({ id: 10 });
     expect(aliases).toEqual(["gestor", "fiscalizadores", "documentos", "respostas"]);
+  });
+
+  it("inclui as assinaturas de cada documento só com os campos que o app precisa, em ordem", async () => {
+    Visita.findByPk.mockResolvedValue({ id: 10 });
+
+    await visitaService.buscarPorId(10);
+    const opcoes = Visita.findByPk.mock.calls[0][1];
+    const documentos = opcoes.include.find((inc) => inc.as === "documentos");
+
+    expect(documentos.include).toEqual([
+      expect.objectContaining({
+        as: "assinaturas",
+        attributes: [
+          "id",
+          "documento_id",
+          "usuario_id",
+          "assinante_tipo",
+          "assinante_nome",
+          "recusou",
+          "data_assinatura",
+        ],
+      }),
+    ]);
+    // CPF, e-mail e caminho da imagem no storage não saem na visita
+    for (const campo of ["assinante_documento", "assinante_email", "imagem_assinatura_url"]) {
+      expect(documentos.include[0].attributes).not.toContain(campo);
+    }
+    expect(opcoes.order).toEqual([
+      [
+        expect.objectContaining({ as: "documentos" }),
+        expect.objectContaining({ as: "assinaturas" }),
+        "data_assinatura",
+        "ASC",
+      ],
+    ]);
   });
 
   it("retorna null quando a visita não existe", async () => {
@@ -728,6 +764,96 @@ describe("associações do modelo Visita", () => {
       as: "documentos",
       onDelete: "CASCADE",
     });
+  });
+});
+
+describe("salvar observações da visita", () => {
+  beforeEach(() => {
+    Documento.findOne.mockReset().mockResolvedValue(null);
+    Visita.update.mockReset().mockResolvedValue([1]);
+  });
+
+  it("trava a visita, grava o texto sem espaços nas pontas e devolve a visita", async () => {
+    Visita.findByPk
+      .mockResolvedValueOnce({ id: 10, status: "em_andamento" })
+      .mockResolvedValueOnce({ id: 10, observacoes_livres: "Produtos vencidos na gôndola" });
+
+    const resultado = await visitaService.salvarObservacoes(10, "  Produtos vencidos na gôndola  ");
+
+    expect(Visita.findByPk).toHaveBeenNthCalledWith(1, 10, {
+      attributes: ["id", "status"],
+      transaction: transacao,
+      lock: transacao.LOCK.UPDATE,
+    });
+    expect(Documento.findOne).toHaveBeenCalledWith({
+      attributes: ["id"],
+      where: { visita_id: 10 },
+      transaction: transacao,
+    });
+    expect(Visita.update).toHaveBeenCalledWith(
+      { observacoes_livres: "Produtos vencidos na gôndola" },
+      { where: { id: 10 }, transaction: transacao }
+    );
+    expect(transacao.commit).toHaveBeenCalled();
+    expect(resultado).toEqual({ id: 10, observacoes_livres: "Produtos vencidos na gôndola" });
+  });
+
+  it("grava null quando o texto vem vazio ou só com espaços, ou quando vem null", async () => {
+    for (const valor of ["", "   ", null]) {
+      Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
+      Visita.update.mockClear();
+
+      await visitaService.salvarObservacoes(10, valor);
+
+      expect(Visita.update).toHaveBeenCalledWith(
+        { observacoes_livres: null },
+        { where: { id: 10 }, transaction: transacao }
+      );
+    }
+  });
+
+  it("rejeita quando a visita não está em andamento", async () => {
+    for (const status of ["agendada", "concluida", "cancelada"]) {
+      Visita.findByPk.mockResolvedValue({ id: 10, status });
+      transacao.rollback.mockClear();
+
+      await expect(visitaService.salvarObservacoes(10, "texto")).rejects.toMatchObject({
+        name: "ValidacaoError",
+        message: "Só é possível registrar observações de visitas em andamento",
+      });
+      expect(Visita.update).not.toHaveBeenCalled();
+      expect(transacao.rollback).toHaveBeenCalled();
+    }
+  });
+
+  it("rejeita depois que o documento foi gerado, porque o PDF já usa o texto", async () => {
+    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
+    Documento.findOne.mockResolvedValue({ id: 7 });
+
+    await expect(visitaService.salvarObservacoes(10, "texto")).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "O documento da visita já foi gerado; as observações não podem mais ser alteradas",
+    });
+    expect(Visita.update).not.toHaveBeenCalled();
+    expect(transacao.rollback).toHaveBeenCalled();
+    expect(transacao.commit).not.toHaveBeenCalled();
+  });
+
+  it("retorna null e desfaz a transação quando a visita não existe", async () => {
+    Visita.findByPk.mockResolvedValue(null);
+
+    expect(await visitaService.salvarObservacoes(99, "texto")).toBeNull();
+    expect(transacao.rollback).toHaveBeenCalled();
+    expect(Visita.update).not.toHaveBeenCalled();
+  });
+
+  it("desfaz a transação e propaga o erro quando a gravação falha", async () => {
+    Visita.findByPk.mockResolvedValue({ id: 10, status: "em_andamento" });
+    Visita.update.mockRejectedValue(new Error("falha no banco"));
+
+    await expect(visitaService.salvarObservacoes(10, "texto")).rejects.toThrow("falha no banco");
+    expect(transacao.rollback).toHaveBeenCalled();
+    expect(transacao.commit).not.toHaveBeenCalled();
   });
 });
 

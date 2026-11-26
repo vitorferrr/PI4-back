@@ -88,6 +88,29 @@ const iniciar = transicionar(
 
 const concluir = transicionar((id) => visitaService.concluir(id), "Erro ao concluir visita");
 
+const salvarObservacoes = async (req, res) => {
+  try {
+    const visita = await visitaService.buscarParaAcesso(req.params.id);
+
+    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
+    }
+
+    const visitaAtualizada = await visitaService.salvarObservacoes(
+      visita.id,
+      req.body.observacoes_livres
+    );
+
+    if (!visitaAtualizada) {
+      return responderNaoEncontrada(res);
+    }
+
+    return res.status(200).json(visitaAtualizada);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao salvar observações");
+  }
+};
+
 const atualizar = async (req, res) => {
   try {
     const visita = await visitaService.buscarPorId(req.params.id);
@@ -246,6 +269,7 @@ export default {
   remover,
   iniciar,
   concluir,
+  salvarObservacoes,
   listarFiscalizadores,
   adicionarFiscalizador,
   substituirFiscalizadores,

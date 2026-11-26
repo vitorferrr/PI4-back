@@ -1,7 +1,7 @@
 import models, { sequelize } from "../models/index.js";
 import erroValidacao from "../utils/erroValidacao.js";
 
-const { Visita, Usuario, Documento, RespostaQuestionario } = models;
+const { Assinatura, Visita, Usuario, Documento, RespostaQuestionario } = models;
 
 const includeGestor = {
   model: Usuario,
@@ -19,6 +19,18 @@ const includeFiscalizadoresPadrao = {
   },
   through: { attributes: [] },
 };
+
+// Só o necessário para o app saber quem já assinou e sincronizar os cartões (DT-47).
+// Ficam de fora o CPF, o e-mail do responsável e o caminho da imagem no storage.
+const ATRIBUTOS_ASSINATURA = [
+  "id",
+  "documento_id",
+  "usuario_id",
+  "assinante_tipo",
+  "assinante_nome",
+  "recusou",
+  "data_assinatura",
+];
 
 const QUANTIDADE_FISCALIZADORES = 1;
 
@@ -149,11 +161,26 @@ const buscarPorId = async (id) => {
       {
         model: Documento,
         as: "documentos",
+        include: [
+          {
+            model: Assinatura,
+            as: "assinaturas",
+            attributes: ATRIBUTOS_ASSINATURA,
+          },
+        ],
       },
       {
         model: RespostaQuestionario,
         as: "respostas",
       },
+    ],
+    order: [
+      [
+        { model: Documento, as: "documentos" },
+        { model: Assinatura, as: "assinaturas" },
+        "data_assinatura",
+        "ASC",
+      ],
     ],
   });
 
@@ -357,6 +384,54 @@ const concluir = async (id) => {
   return await buscarPorId(id);
 };
 
+// DT-48: o app envia as observações antes do POST /visitas/:id/documento, para que
+// elas entrem no PDF. Depois que o documento existe, o texto do PDF não pode mudar.
+const salvarObservacoes = async (id, observacoes) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(id, {
+      attributes: ["id", "status"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    if (visita.status !== "em_andamento") {
+      throw erroValidacao("Só é possível registrar observações de visitas em andamento");
+    }
+
+    const documento = await Documento.findOne({
+      attributes: ["id"],
+      where: { visita_id: id },
+      transaction,
+    });
+
+    if (documento) {
+      throw erroValidacao(
+        "O documento da visita já foi gerado; as observações não podem mais ser alteradas"
+      );
+    }
+
+    const texto = typeof observacoes === "string" ? observacoes.trim() : "";
+
+    await Visita.update(
+      { observacoes_livres: texto || null },
+      { where: { id }, transaction }
+    );
+    await transaction.commit();
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+
+  return await buscarPorId(id);
+};
+
 const remover = async (id) => {
   const transaction = await sequelize.transaction();
 
@@ -550,6 +625,7 @@ export default {
   atualizar,
   iniciar,
   concluir,
+  salvarObservacoes,
   remover,
   listarFiscalizadores,
   adicionarFiscalizador,

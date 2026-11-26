@@ -13,6 +13,7 @@ import {
   validarAtualizacaoVisita,
   validarCriacaoVisita,
   validarListagemVisitas,
+  validarObservacoesVisita,
   validarRespostasQuestionario,
 } from "../middlewares/validationMiddleware.js";
 
@@ -106,6 +107,15 @@ router.patch(
   autorizar("admin", "gestor", "fiscalizador"),
   validarId,
   visitaController.concluir
+);
+
+router.patch(
+  "/:id/observacoes",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  validarObservacoesVisita,
+  visitaController.salvarObservacoes
 );
 
 router.post(
