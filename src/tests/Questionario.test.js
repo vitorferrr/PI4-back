@@ -21,10 +21,13 @@ vi.mock("../models/index.js", () => {
       },
       PerguntaQuestionario: {
         findAll: vi.fn(),
+        findByPk: vi.fn(),
+        create: vi.fn(),
       },
       RespostaQuestionario: {
         bulkCreate: vi.fn(),
         findAll: vi.fn(),
+        findOne: vi.fn(),
       },
       Visita: {
         findByPk: vi.fn(),
@@ -336,5 +339,95 @@ describe("questionarioController.salvarRespostas", () => {
     await questionarioController.salvarRespostas(req, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
+  });
+});
+
+describe("CRUD de perguntas (questionarioService)", () => {
+  it("busca pergunta por id", async () => {
+    const pergunta = { id: 1, texto: "Tem alvará?", tipo_resposta: "sim_nao", ordem: 1 };
+    models.PerguntaQuestionario.findByPk.mockResolvedValueOnce(pergunta);
+
+    const resultado = await questionarioService.buscarPorId(1);
+
+    expect(resultado).toEqual(pergunta);
+    expect(models.PerguntaQuestionario.findByPk).toHaveBeenCalledWith(1);
+  });
+
+  it("cria pergunta válida com texto normalizado", async () => {
+    const criada = { id: 2, texto: "Possui validade?", tipo_resposta: "sim_nao", ordem: 2 };
+    models.PerguntaQuestionario.create.mockResolvedValueOnce(criada);
+
+    const resultado = await questionarioService.criar({
+      texto: "  Possui validade?  ",
+      tipo_resposta: "sim_nao",
+      ordem: 2,
+    });
+
+    expect(models.PerguntaQuestionario.create).toHaveBeenCalledWith({
+      texto: "Possui validade?",
+      tipo_resposta: "sim_nao",
+      ordem: 2,
+    });
+    expect(resultado).toEqual(criada);
+  });
+
+  it("rejeita criação com texto vazio, tipo_resposta inválido ou ordem não inteira", async () => {
+    await expect(
+      questionarioService.criar({
+        texto: "  ",
+        tipo_resposta: "multipla_escolha",
+        ordem: 0,
+      })
+    ).rejects.toMatchObject({
+      name: "ValidacaoError",
+      errors: [
+        { message: "O texto da pergunta é obrigatório" },
+        {
+          message:
+            "tipo_resposta deve ser um dos valores: sim_nao, numero, data, texto",
+        },
+        { message: "ordem deve ser um número inteiro positivo" },
+      ],
+    });
+  });
+
+  it("atualiza pergunta existente e retorna null se não existir", async () => {
+    const update = vi.fn().mockResolvedValueOnce({ id: 1, texto: "Editada", ordem: 3 });
+    models.PerguntaQuestionario.findByPk
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 1, update });
+
+    expect(await questionarioService.atualizar(99, { texto: "Editada" })).toBeNull();
+
+    const atualizada = await questionarioService.atualizar(1, {
+      texto: " Editada ",
+      ordem: 3,
+    });
+
+    expect(update).toHaveBeenCalledWith({ texto: "Editada", ordem: 3 });
+    expect(atualizada).toEqual({ id: 1, texto: "Editada", ordem: 3 });
+  });
+
+  it("remove pergunta sem respostas vinculadas", async () => {
+    const destroy = vi.fn().mockResolvedValueOnce();
+    const pergunta = { id: 1, destroy };
+    models.PerguntaQuestionario.findByPk.mockResolvedValueOnce(pergunta);
+    models.RespostaQuestionario.findOne.mockResolvedValueOnce(null);
+
+    const removida = await questionarioService.remover(1);
+
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(removida).toBe(pergunta);
+  });
+
+  it("recusa remoção quando a pergunta já foi respondida em visitas", async () => {
+    const destroy = vi.fn();
+    models.PerguntaQuestionario.findByPk.mockResolvedValueOnce({ id: 1, destroy });
+    models.RespostaQuestionario.findOne.mockResolvedValueOnce({ id: 42 });
+
+    await expect(questionarioService.remover(1)).rejects.toThrow(
+      "Pergunta já respondida em visitas; não pode ser apagada"
+    );
+    expect(destroy).not.toHaveBeenCalled();
   });
 });
