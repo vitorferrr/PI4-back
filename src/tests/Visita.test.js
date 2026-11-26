@@ -50,7 +50,10 @@ const dadosVisita = {
 const criarVisitaFalsa = (dados = {}) => ({
   id: 10,
   ...dados,
+  getFiscalizadores: vi.fn(),
+  addFiscalizador: vi.fn(),
   setFiscalizadores: vi.fn(),
+  removeFiscalizador: vi.fn(),
   update: vi.fn(),
   destroy: vi.fn(),
 });
@@ -717,6 +720,87 @@ describe("associações do modelo Visita", () => {
       foreignKey: "visita_id",
       as: "documentos",
       onDelete: "CASCADE",
+    });
+  });
+});
+
+describe("relacionamento visita <-> fiscalizadores (DT-06)", () => {
+  it("lista fiscalizadores da visita sem senha_hash", async () => {
+    const visita = criarVisitaFalsa();
+    const lista = [{ id: 5, nome: "Ana" }];
+    visita.getFiscalizadores.mockResolvedValue(lista);
+    Visita.findByPk.mockResolvedValue(visita);
+
+    const resultado = await visitaService.listarFiscalizadores(10);
+
+    expect(visita.getFiscalizadores).toHaveBeenCalledWith({
+      attributes: { exclude: ["senha_hash"] },
+      joinTableAttributes: [],
+    });
+    expect(resultado).toEqual(lista);
+  });
+
+  it("adiciona fiscalizador quando a visita ainda não possui vínculo", async () => {
+    const visita = criarVisitaFalsa();
+    visita.getFiscalizadores
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 5, nome: "Ana" }]);
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue(null);
+
+    const resultado = await visitaService.adicionarFiscalizador(10, 5);
+
+    expect(visita.addFiscalizador).toHaveBeenCalledWith(5, {
+      transaction: sequelize.transacao,
+    });
+    expect(resultado).toEqual([{ id: 5, nome: "Ana" }]);
+  });
+
+  it("recusa adicionar fiscalizador se a visita já possui um", async () => {
+    const visita = criarVisitaFalsa();
+    visita.getFiscalizadores.mockResolvedValueOnce([{ id: 5 }]);
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue(null);
+
+    await expect(visitaService.adicionarFiscalizador(10, 6)).rejects.toThrow(
+      "A visita já possui fiscalizador vinculado; utilize PUT para substituí-lo"
+    );
+    expect(visita.addFiscalizador).not.toHaveBeenCalled();
+  });
+
+  it("substitui fiscalizadores e bloqueia alteração após documento gerado", async () => {
+    const visita = criarVisitaFalsa();
+    visita.getFiscalizadores.mockResolvedValue([{ id: 7, nome: "Bruno" }]);
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 1 });
+
+    const resultado = await visitaService.substituirFiscalizadores(10, [7]);
+    expect(visita.setFiscalizadores).toHaveBeenCalledWith([7], {
+      transaction: sequelize.transacao,
+    });
+    expect(resultado).toEqual([{ id: 7, nome: "Bruno" }]);
+
+    await expect(visitaService.substituirFiscalizadores(10, [8])).rejects.toThrow(
+      "O documento da visita já foi gerado; os fiscalizadores não podem mais ser alterados"
+    );
+  });
+
+  it("remove fiscalizador vinculado e sinaliza naoVinculado se não estiver associado", async () => {
+    const visita = criarVisitaFalsa();
+    Visita.findByPk.mockResolvedValue(visita);
+    Documento.findOne.mockResolvedValue(null);
+
+    visita.getFiscalizadores.mockResolvedValueOnce([]);
+    expect(await visitaService.removerFiscalizador(10, 99)).toEqual({
+      naoVinculado: true,
+    });
+
+    visita.getFiscalizadores.mockResolvedValueOnce([{ id: 5 }]);
+    expect(await visitaService.removerFiscalizador(10, "5")).toEqual({
+      removido: true,
+    });
+    expect(visita.removeFiscalizador).toHaveBeenCalledWith(5, {
+      transaction: sequelize.transacao,
     });
   });
 });

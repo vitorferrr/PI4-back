@@ -360,6 +360,145 @@ const remover = async (id) => {
   }
 };
 
+const garantirDocumentoNaoGerado = async (visitaId, transaction) => {
+  const documento = await Documento.findOne({
+    attributes: ["id"],
+    where: { visita_id: visitaId },
+    transaction,
+  });
+
+  if (documento) {
+    throw erroValidacao(
+      "O documento da visita já foi gerado; os fiscalizadores não podem mais ser alterados"
+    );
+  }
+};
+
+const listarFiscalizadores = async (visitaId) => {
+  const visita = await Visita.findByPk(visitaId, { attributes: ["id"] });
+
+  if (!visita) {
+    return null;
+  }
+
+  return await visita.getFiscalizadores({
+    attributes: { exclude: ["senha_hash"] },
+    joinTableAttributes: [],
+  });
+};
+
+const adicionarFiscalizador = async (visitaId, fiscalizadorId) => {
+  await validarFiscalizadores([fiscalizadorId]);
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(visitaId, {
+      attributes: ["id"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    await garantirDocumentoNaoGerado(visitaId, transaction);
+
+    const atuais = await visita.getFiscalizadores({
+      attributes: ["id"],
+      joinTableAttributes: [],
+      transaction,
+    });
+
+    if (atuais.length >= QUANTIDADE_FISCALIZADORES) {
+      throw erroValidacao(
+        "A visita já possui fiscalizador vinculado; utilize PUT para substituí-lo"
+      );
+    }
+
+    await visita.addFiscalizador(fiscalizadorId, { transaction });
+    await transaction.commit();
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+
+  return await listarFiscalizadores(visitaId);
+};
+
+const substituirFiscalizadores = async (visitaId, fiscalizadoresIds) => {
+  await validarFiscalizadores(fiscalizadoresIds);
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(visitaId, {
+      attributes: ["id"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    await garantirDocumentoNaoGerado(visitaId, transaction);
+
+    await visita.setFiscalizadores([...new Set(fiscalizadoresIds)], {
+      transaction,
+    });
+    await transaction.commit();
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+
+  return await listarFiscalizadores(visitaId);
+};
+
+const removerFiscalizador = async (visitaId, fiscalizadorId) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await Visita.findByPk(visitaId, {
+      attributes: ["id"],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!visita) {
+      await transaction.rollback();
+      return null;
+    }
+
+    await garantirDocumentoNaoGerado(visitaId, transaction);
+
+    const idFiscalizador = Number(fiscalizadorId);
+    const vinculados = await visita.getFiscalizadores({
+      attributes: ["id"],
+      where: { id: idFiscalizador },
+      joinTableAttributes: [],
+      transaction,
+    });
+
+    if (vinculados.length === 0) {
+      await transaction.rollback();
+      return { naoVinculado: true };
+    }
+
+    await visita.removeFiscalizador(idFiscalizador, { transaction });
+    await transaction.commit();
+
+    return { removido: true };
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+};
+
 export default {
   criar,
   listar,
@@ -369,4 +508,8 @@ export default {
   iniciar,
   concluir,
   remover,
+  listarFiscalizadores,
+  adicionarFiscalizador,
+  substituirFiscalizadores,
+  removerFiscalizador,
 };

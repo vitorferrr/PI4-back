@@ -140,6 +140,104 @@ const remover = async (req, res) => {
   }
 };
 
+const listarFiscalizadores = async (req, res) => {
+  try {
+    const visita = await visitaService.buscarPorId(req.params.id);
+
+    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
+    }
+
+    const fiscalizadores = await visitaService.listarFiscalizadores(req.params.id);
+
+    if (!fiscalizadores) {
+      return responderNaoEncontrada(res);
+    }
+
+    return res.status(200).json(fiscalizadores);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao listar fiscalizadores da visita");
+  }
+};
+
+const adicionarFiscalizador = async (req, res) => {
+  try {
+    const visita = await visitaService.buscarPorId(req.params.id);
+
+    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
+    }
+
+    const fiscalizadorId = req.body?.fiscalizadorId ?? req.body?.fiscalizador_id;
+    const fiscalizadores = await visitaService.adicionarFiscalizador(
+      req.params.id,
+      fiscalizadorId
+    );
+
+    if (!fiscalizadores) {
+      return responderNaoEncontrada(res);
+    }
+
+    return res.status(201).json(fiscalizadores);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao vincular fiscalizador à visita");
+  }
+};
+
+const substituirFiscalizadores = async (req, res) => {
+  try {
+    const visita = await visitaService.buscarPorId(req.params.id);
+
+    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
+    }
+
+    const fiscalizadoresIds =
+      req.body?.fiscalizadoresIds ?? req.body?.fiscalizadores_ids;
+    const fiscalizadores = await visitaService.substituirFiscalizadores(
+      req.params.id,
+      fiscalizadoresIds
+    );
+
+    if (!fiscalizadores) {
+      return responderNaoEncontrada(res);
+    }
+
+    return res.status(200).json(fiscalizadores);
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao atualizar fiscalizadores da visita");
+  }
+};
+
+const removerFiscalizador = async (req, res) => {
+  try {
+    const visita = await visitaService.buscarPorId(req.params.id);
+
+    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
+      return responderNaoEncontrada(res);
+    }
+
+    const resultado = await visitaService.removerFiscalizador(
+      req.params.id,
+      req.params.fiscalizadorId
+    );
+
+    if (!resultado) {
+      return responderNaoEncontrada(res);
+    }
+
+    if (resultado.naoVinculado) {
+      return res.status(404).json({
+        mensagem: "Fiscalizador não vinculado à visita",
+      });
+    }
+
+    return res.status(204).send();
+  } catch (erro) {
+    return tratarErro(res, erro, "Erro ao remover fiscalizador da visita");
+  }
+};
+
 export default {
   criar,
   listar,
@@ -148,4 +246,8 @@ export default {
   remover,
   iniciar,
   concluir,
+  listarFiscalizadores,
+  adicionarFiscalizador,
+  substituirFiscalizadores,
+  removerFiscalizador,
 };
