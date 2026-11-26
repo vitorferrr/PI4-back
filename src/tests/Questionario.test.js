@@ -4,7 +4,6 @@ import pg from "pg";
 import models, { sequelize } from "../models/index.js";
 import questionarioService from "../services/questionarioService.js";
 import questionarioController from "../controllers/questionarioController.js";
-import visitaService from "../services/visitaService.js";
 import getPerguntaQuestionarioModel from "../models/perguntaQuestionario.js";
 
 vi.mock("../models/index.js", () => {
@@ -329,29 +328,16 @@ describe("salvar respostas do questionário", () => {
 });
 
 describe("questionarioController.salvarRespostas", () => {
-  it("responde 404 quando a visita não pertence ao fiscalizador", async () => {
-    const req = { params: { id: "10" }, usuario: { id: 6, role: "fiscalizador" }, body: { respostas: [] } };
-    const res = criarRes();
-    vi.spyOn(visitaService, "buscarParaAcesso").mockResolvedValueOnce({
-      id: 10,
-      fiscalizadores: [{ id: 5 }],
-    });
-    const salvar = vi.spyOn(questionarioService, "salvarRespostas");
-
-    await expect(questionarioController.salvarRespostas(req, res)).rejects.toMatchObject({
-      statusCode: 404,
-      message: "Visita não encontrada",
-    });
-    expect(salvar).not.toHaveBeenCalled();
-  });
-
+  // Quem barra o fiscal de outra visita é o ownershipMiddleware (403); aqui a
+  // visita já chega conferida em req.visita.
   it("responde 404 quando a visita some antes de gravar", async () => {
-    const req = { params: { id: "10" }, usuario: { id: 5, role: "fiscalizador" }, body: { respostas: [] } };
+    const req = {
+      params: { id: "10" },
+      usuario: { id: 5, role: "fiscalizador" },
+      visita: { id: 10, fiscalizadores: [{ id: 5 }] },
+      body: { respostas: [] },
+    };
     const res = criarRes();
-    vi.spyOn(visitaService, "buscarParaAcesso").mockResolvedValueOnce({
-      id: 10,
-      fiscalizadores: [{ id: 5 }],
-    });
     vi.spyOn(questionarioService, "salvarRespostas").mockResolvedValueOnce(null);
 
     await expect(questionarioController.salvarRespostas(req, res)).rejects.toMatchObject({

@@ -1,15 +1,10 @@
 import visitaService from "../services/visitaService.js";
 import AppError from "../utils/appError.js";
-import { podeAcessarVisita, erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
+import { erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
 
 const MENSAGEM_REFERENCIA_INVALIDA =
   "Gestor ou fiscalizador informado não existe no sistema.";
 
-const podeGerenciarVisita = (usuario, visita) =>
-  usuario?.role === "admin" || visita.gestor_id === usuario?.id;
-
-// Quando o gestor_id ou um fiscalizador não existe, o banco recusa a gravação
-// (chave estrangeira). Aqui a mensagem genérica vira uma que diz o que está errado.
 const comReferenciasValidas = async (operacao) => {
   try {
     return await operacao();
@@ -23,12 +18,6 @@ const comReferenciasValidas = async (operacao) => {
 };
 
 const transicionar = (transicao) => async (req, res) => {
-  const visita = await visitaService.buscarPorId(req.params.id);
-
-  if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
   const visitaAtualizada = await transicao(req.params.id, req);
 
   if (!visitaAtualizada) {
@@ -70,7 +59,7 @@ const listar = async (req, res) => {
 const buscarPorId = async (req, res) => {
   const visita = await visitaService.buscarPorId(req.params.id);
 
-  if (!visita || !podeAcessarVisita(req.usuario, visita)) {
+  if (!visita) {
     throw erroVisitaNaoEncontrada();
   }
 
@@ -82,14 +71,8 @@ const iniciar = transicionar((id, req) => visitaService.iniciar(id, req.body));
 const concluir = transicionar((id) => visitaService.concluir(id));
 
 const salvarObservacoes = async (req, res) => {
-  const visita = await visitaService.buscarParaAcesso(req.params.id);
-
-  if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
   const visitaAtualizada = await visitaService.salvarObservacoes(
-    visita.id,
+    req.visita.id,
     req.body.observacoes_livres
   );
 
@@ -101,12 +84,6 @@ const salvarObservacoes = async (req, res) => {
 };
 
 const atualizar = async (req, res) => {
-  const visita = await visitaService.buscarPorId(req.params.id);
-
-  if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
   const { fiscalizadores_ids, fiscalizadores, ...dadosVisita } = req.body ?? {};
   const ids = fiscalizadores_ids ?? fiscalizadores;
 
@@ -122,12 +99,6 @@ const atualizar = async (req, res) => {
 };
 
 const remover = async (req, res) => {
-  const visita = await visitaService.buscarPorId(req.params.id);
-
-  if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
   const visitaRemovida = await visitaService.remover(req.params.id);
 
   if (!visitaRemovida) {
@@ -138,12 +109,6 @@ const remover = async (req, res) => {
 };
 
 const listarFiscalizadores = async (req, res) => {
-  const visita = await visitaService.buscarPorId(req.params.id);
-
-  if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
   const fiscalizadores = await visitaService.listarFiscalizadores(req.params.id);
 
   if (!fiscalizadores) {
@@ -154,12 +119,6 @@ const listarFiscalizadores = async (req, res) => {
 };
 
 const adicionarFiscalizador = async (req, res) => {
-  const visita = await visitaService.buscarPorId(req.params.id);
-
-  if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
   const fiscalizadorId = req.body?.fiscalizadorId ?? req.body?.fiscalizador_id;
   const fiscalizadores = await visitaService.adicionarFiscalizador(
     req.params.id,
@@ -174,12 +133,6 @@ const adicionarFiscalizador = async (req, res) => {
 };
 
 const substituirFiscalizadores = async (req, res) => {
-  const visita = await visitaService.buscarPorId(req.params.id);
-
-  if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
   const fiscalizadoresIds =
     req.body?.fiscalizadoresIds ?? req.body?.fiscalizadores_ids;
   const fiscalizadores = await visitaService.substituirFiscalizadores(
@@ -195,12 +148,6 @@ const substituirFiscalizadores = async (req, res) => {
 };
 
 const removerFiscalizador = async (req, res) => {
-  const visita = await visitaService.buscarPorId(req.params.id);
-
-  if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
   const resultado = await visitaService.removerFiscalizador(
     req.params.id,
     req.params.fiscalizadorId

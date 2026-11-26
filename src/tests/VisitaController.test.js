@@ -76,6 +76,9 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // O ownershipMiddleware usa a busca leve (buscarParaAcesso). Por padrão ela
+  // devolve a mesma visita que cada teste configurou na busca completa.
+  visitaService.buscarParaAcesso.mockImplementation((id) => visitaService.buscarPorId(id));
 });
 
 describe("GET /visitas/:id", () => {
@@ -88,16 +91,17 @@ describe("GET /visitas/:id", () => {
     expect(await resposta.json()).toEqual(visitaDoFiscalizador5);
   });
 
-  it("responde 404 para fiscalizador não associado, como em visita inexistente", async () => {
+  it("responde 403 para fiscalizador não associado e 404 para visita inexistente", async () => {
     visitaService.buscarPorId.mockResolvedValueOnce(visitaDoFiscalizador5);
     const naoAssociado = await requisitar("GET", "/10", "fiscalizador", 6);
 
     visitaService.buscarPorId.mockResolvedValueOnce(null);
     const inexistente = await requisitar("GET", "/99");
 
-    expect(naoAssociado.status).toBe(404);
+    expect(naoAssociado.status).toBe(403);
+    expect(await naoAssociado.json()).toEqual({ mensagem: "Você não tem permissão para acessar esta visita." });
     expect(inexistente.status).toBe(404);
-    expect(await naoAssociado.json()).toEqual(await inexistente.json());
+    expect(await inexistente.json()).toEqual({ mensagem: "Visita não encontrada" });
   });
 
   it.each(["admin", "gestor"])("permite que %s acesse sem estar associado", async (role) => {
@@ -309,12 +313,12 @@ describe.each([
     expect(visitaService[acao].mock.calls[0][0]).toBe("10");
   });
 
-  it("responde 404 e não altera a visita para fiscalizador não associado", async () => {
+  it("responde 403 e não altera a visita para fiscalizador não associado", async () => {
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
 
     const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 6, corpo);
 
-    expect(resposta.status).toBe(404);
+    expect(resposta.status).toBe(403);
     expect(visitaService[acao]).not.toHaveBeenCalled();
   });
 
@@ -464,14 +468,14 @@ describe("PATCH /visitas/:id/observacoes", () => {
     expect(visitaService.salvarObservacoes).toHaveBeenCalledWith(10, null);
   });
 
-  it("responde 404 para fiscalizador que não é da visita, sem gravar", async () => {
+  it("responde 403 para fiscalizador que não é da visita, sem gravar", async () => {
     visitaService.buscarParaAcesso.mockResolvedValue(visitaParaAcesso);
 
     const resposta = await requisitar("PATCH", "/10/observacoes", "fiscalizador", 6, {
       observacoes_livres: "Texto",
     });
 
-    expect(resposta.status).toBe(404);
+    expect(resposta.status).toBe(403);
     expect(visitaService.salvarObservacoes).not.toHaveBeenCalled();
   });
 
@@ -572,14 +576,15 @@ describe("PUT /visitas/:id", () => {
     );
   });
 
-  it("responde 404 quando outro gestor tenta atualizar visita que não é dele", async () => {
+  it("responde 403 quando outro gestor tenta atualizar visita que não é dele", async () => {
     visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 99 });
 
     const resposta = await requisitar("PUT", "/10", "gestor", 1, {
       denunciado: "Invasão",
     });
 
-    expect(resposta.status).toBe(404);
+    expect(resposta.status).toBe(403);
+    expect(await resposta.json()).toEqual({ mensagem: "Você não tem permissão para alterar uma visita de outro gestor." });
     expect(visitaService.atualizar).not.toHaveBeenCalled();
   });
 
@@ -648,12 +653,12 @@ describe("DELETE /visitas/:id", () => {
     expect(resposta.status).toBe(204);
   });
 
-  it("responde 404 quando outro gestor tenta remover visita que não é dele", async () => {
+  it("responde 403 quando outro gestor tenta remover visita que não é dele", async () => {
     visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 99 });
 
     const resposta = await requisitar("DELETE", "/10", "gestor", 1);
 
-    expect(resposta.status).toBe(404);
+    expect(resposta.status).toBe(403);
     expect(visitaService.remover).not.toHaveBeenCalled();
   });
 
@@ -687,7 +692,7 @@ describe("DELETE /visitas/:id", () => {
 });
 
 describe("rotas compostas /visitas/:id/fiscalizadores (DT-06)", () => {
-  it("GET /visitas/:id/fiscalizadores permite fiscalizador associado e bloqueia não associado (404)", async () => {
+  it("GET /visitas/:id/fiscalizadores permite fiscalizador associado e bloqueia não associado (403)", async () => {
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
     visitaService.listarFiscalizadores.mockResolvedValue([{ id: 5, nome: "Ana" }]);
 
@@ -696,10 +701,10 @@ describe("rotas compostas /visitas/:id/fiscalizadores (DT-06)", () => {
     expect(await ok.json()).toEqual([{ id: 5, nome: "Ana" }]);
 
     const outro = await requisitar("GET", "/10/fiscalizadores", "fiscalizador", 6);
-    expect(outro.status).toBe(404);
+    expect(outro.status).toBe(403);
   });
 
-  it("POST /visitas/:id/fiscalizadores vincula fiscalizador para gestor dono (201) e bloqueia outro gestor (404)", async () => {
+  it("POST /visitas/:id/fiscalizadores vincula fiscalizador para gestor dono (201) e bloqueia outro gestor (403)", async () => {
     visitaService.buscarPorId.mockResolvedValue({ id: 10, gestor_id: 1 });
     visitaService.adicionarFiscalizador.mockResolvedValue([{ id: 5, nome: "Ana" }]);
 
@@ -712,7 +717,7 @@ describe("rotas compostas /visitas/:id/fiscalizadores (DT-06)", () => {
     const outroGestor = await requisitar("POST", "/10/fiscalizadores", "gestor", 2, {
       fiscalizadorId: 5,
     });
-    expect(outroGestor.status).toBe(404);
+    expect(outroGestor.status).toBe(403);
   });
 
   it("PUT /visitas/:id/fiscalizadores substitui fiscalizadores para admin (200)", async () => {

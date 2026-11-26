@@ -1,16 +1,9 @@
 import documentoService from "../services/documentoService.js";
-import visitaService from "../services/visitaService.js";
 import AppError from "../utils/appError.js";
-import { podeAcessarVisita, erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
+import { erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
 
 const gerar = async (req, res) => {
-  const visita = await visitaService.buscarParaAcesso(req.params.id);
-
-  if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
-  const resultado = await documentoService.gerar(visita.id);
+  const resultado = await documentoService.gerar(req.visita.id);
 
   if (!resultado) {
     throw erroVisitaNaoEncontrada();

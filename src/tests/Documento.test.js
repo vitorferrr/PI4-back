@@ -4,7 +4,6 @@ import pg from "pg";
 import models, { sequelize } from "../models/index.js";
 import documentoService from "../services/documentoService.js";
 import documentoController from "../controllers/documentoController.js";
-import visitaService from "../services/visitaService.js";
 import getDocumentoModel from "../models/documento.js";
 
 vi.mock("../models/index.js", () => {
@@ -32,12 +31,6 @@ vi.mock("../models/index.js", () => {
     },
   };
 });
-
-vi.mock("../services/visitaService.js", () => ({
-  default: {
-    buscarParaAcesso: vi.fn(),
-  },
-}));
 
 const { Documento, PerguntaQuestionario, RespostaQuestionario, Visita } = models;
 const { transacao } = sequelize;
@@ -177,11 +170,15 @@ describe("gerar documento da visita", () => {
 });
 
 describe("documentoController.gerar", () => {
+  // req.visita é preenchida pelo ownershipMiddleware, que já conferiu o acesso.
   const visita = { id: 10, status: "em_andamento", fiscalizadores: [{ id: 5 }] };
-  const requisicao = (id = 5) => ({ params: { id: "10" }, usuario: { id, role: "fiscalizador" } });
+  const requisicao = () => ({
+    params: { id: "10" },
+    usuario: { id: 5, role: "fiscalizador" },
+    visita,
+  });
 
   it("responde 201 quando cria o documento", async () => {
-    visitaService.buscarParaAcesso.mockResolvedValue(visita);
     vi.spyOn(documentoService, "gerar").mockResolvedValueOnce({
       documento: { id: 7 },
       criado: true,
@@ -196,7 +193,6 @@ describe("documentoController.gerar", () => {
   });
 
   it("responde 200 quando o documento já existia", async () => {
-    visitaService.buscarParaAcesso.mockResolvedValue(visita);
     vi.spyOn(documentoService, "gerar").mockResolvedValueOnce({
       documento: { id: 7 },
       criado: false,
@@ -208,21 +204,7 @@ describe("documentoController.gerar", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it("responde 404 para fiscalizador que não está na visita", async () => {
-    visitaService.buscarParaAcesso.mockResolvedValue(visita);
-    const gerar = vi.spyOn(documentoService, "gerar");
-    const res = criarRes();
-
-    await expect(documentoController.gerar(requisicao(6), res)).rejects.toMatchObject({
-      statusCode: 404,
-      message: "Visita não encontrada",
-    });
-    expect(res.status).not.toHaveBeenCalled();
-    expect(gerar).not.toHaveBeenCalled();
-  });
-
   it("responde 404 quando a visita some antes de gerar", async () => {
-    visitaService.buscarParaAcesso.mockResolvedValue(visita);
     vi.spyOn(documentoService, "gerar").mockResolvedValueOnce(null);
     const res = criarRes();
 

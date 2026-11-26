@@ -1,7 +1,6 @@
 import questionarioService from "../services/questionarioService.js";
-import visitaService from "../services/visitaService.js";
 import AppError from "../utils/appError.js";
-import { podeAcessarVisita, erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
+import { erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
 
 const erroPerguntaNaoEncontrada = () => new AppError("Pergunta não encontrada", 404);
 
@@ -49,14 +48,13 @@ const remover = async (req, res) => {
   return res.status(204).send();
 };
 
+// Nas rotas de respostas, o ownershipMiddleware já buscou a visita e conferiu o
+// acesso; ela chega em req.visita.
 const salvarRespostas = async (req, res) => {
-  const visita = await visitaService.buscarParaAcesso(req.params.id);
-
-  if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
-  const respostas = await questionarioService.salvarRespostas(visita.id, req.body?.respostas);
+  const respostas = await questionarioService.salvarRespostas(
+    req.visita.id,
+    req.body?.respostas
+  );
 
   if (!respostas) {
     throw erroVisitaNaoEncontrada();
@@ -65,15 +63,8 @@ const salvarRespostas = async (req, res) => {
   return res.status(200).json(respostas);
 };
 
-const comVisitaAcessivel = (acao) => async (req, res) => {
-  const visita = await visitaService.buscarParaAcesso(req.params.id);
-
-  if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-    throw erroVisitaNaoEncontrada();
-  }
-
-  return acao(req, res, visita.id, Number(req.params.respostaId));
-};
+const comVisitaAcessivel = (acao) => async (req, res) =>
+  acao(req, res, req.visita.id, Number(req.params.respostaId));
 
 const listarRespostas = comVisitaAcessivel(async (req, res, visitaId) => {
   const respostas = await questionarioService.listarDaVisita(visitaId);

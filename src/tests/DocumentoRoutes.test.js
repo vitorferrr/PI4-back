@@ -83,12 +83,12 @@ describe("POST /visitas/:id/documento", () => {
     expect(resposta.status).toBe(200);
   });
 
-  it("responde 404 para fiscalizador não associado, sem gerar", async () => {
+  it("responde 403 para fiscalizador não associado, sem gerar", async () => {
     visitaService.buscarParaAcesso.mockResolvedValue(visitaDoFiscalizador5);
 
     const resposta = await requisitar("/visitas/10/documento", "fiscalizador", 6);
 
-    expect(resposta.status).toBe(404);
+    expect(resposta.status).toBe(403);
     expect(documentoService.gerar).not.toHaveBeenCalled();
   });
 
