@@ -336,15 +336,15 @@ describe("respostas da visita por URL composta", () => {
     const MENSAGEM_CORPO = "O corpo da requisição deve ser um objeto JSON";
 
     it.each([
-      [{}, MENSAGEM_RESPOSTA, [`resposta: ${MENSAGEM_RESPOSTA}`]],
-      [{ resposta: "   " }, MENSAGEM_RESPOSTA, [`resposta: ${MENSAGEM_RESPOSTA}`]],
-      [{ resposta: 5 }, MENSAGEM_RESPOSTA, [`resposta: ${MENSAGEM_RESPOSTA}`]],
-      [[{ resposta: "Sim" }], MENSAGEM_CORPO, [MENSAGEM_CORPO]],
-    ])("responde 400 no mesmo padrão do POST para corpo %j", async (corpo, mensagem, erros) => {
+      [{}, MENSAGEM_RESPOSTA],
+      [{ resposta: "   " }, MENSAGEM_RESPOSTA],
+      [{ resposta: 5 }, MENSAGEM_RESPOSTA],
+      [[{ resposta: "Sim" }], MENSAGEM_CORPO],
+    ])("responde 400 no mesmo padrão do POST para corpo %j", async (corpo, mensagem) => {
       const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 5, corpo);
 
       expect(resposta.status).toBe(400);
-      expect(await resposta.json()).toEqual({ mensagem, erros });
+      expect(await resposta.json()).toEqual({ mensagem });
       expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
       expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
     });
@@ -375,7 +375,6 @@ describe("respostas da visita por URL composta", () => {
       expect(resposta.status).toBe(400);
       expect(await resposta.json()).toEqual({
         mensagem: "O documento da visita já foi gerado; as respostas não podem mais ser alteradas",
-        erros: ["O documento da visita já foi gerado; as respostas não podem mais ser alteradas"],
       });
     });
   });

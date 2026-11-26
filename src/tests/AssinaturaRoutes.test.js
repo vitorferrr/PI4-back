@@ -315,7 +315,6 @@ describe("POST /documentos/:id/assinaturas", () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: "Este fiscalizador já assinou o documento",
-      erros: ["Este fiscalizador já assinou o documento"],
     });
   });
 

@@ -113,17 +113,17 @@ describe("POST /auth/signup", () => {
   const OBRIGATORIOS = "Nome, email e senha são obrigatórios";
 
   it.each([
-    [{ email: "ana@exemplo.com", senha: "senha-forte" }, [`nome: ${OBRIGATORIOS}`]],
-    [{ nome: "Ana", senha: "senha-forte" }, [`email: ${OBRIGATORIOS}`]],
-    [{ nome: "Ana", email: "ana@exemplo.com" }, [`senha: ${OBRIGATORIOS}`]],
-    [{ nome: "   ", email: "ana@exemplo.com", senha: "senha-forte" }, [`nome: ${OBRIGATORIOS}`]],
-    [{ nome: 10, email: "ana@exemplo.com", senha: "senha-forte" }, [`nome: ${OBRIGATORIOS}`]],
-    [undefined, [`nome: ${OBRIGATORIOS}`, `email: ${OBRIGATORIOS}`, `senha: ${OBRIGATORIOS}`]],
-  ])("responde 400 quando falta nome, email ou senha (%#)", async (corpo, erros) => {
+    [{ email: "ana@exemplo.com", senha: "senha-forte" }],
+    [{ nome: "Ana", senha: "senha-forte" }],
+    [{ nome: "Ana", email: "ana@exemplo.com" }],
+    [{ nome: "   ", email: "ana@exemplo.com", senha: "senha-forte" }],
+    [{ nome: 10, email: "ana@exemplo.com", senha: "senha-forte" }],
+    [undefined],
+  ])("responde 400 quando falta nome, email ou senha (%#)", async (corpo) => {
     const resposta = await requisitar("/signup", corpo);
 
     expect(resposta.status).toBe(400);
-    expect(await resposta.json()).toEqual({ mensagem: OBRIGATORIOS, erros });
+    expect(await resposta.json()).toEqual({ mensagem: OBRIGATORIOS });
     expect(usuarioService.criar).not.toHaveBeenCalled();
   });
 
@@ -135,7 +135,6 @@ describe("POST /auth/signup", () => {
       expect(resposta.status).toBe(400);
       expect(await resposta.json()).toEqual({
         mensagem: "A senha deve ter entre 8 e 72 caracteres",
-        erros: ["senha: A senha deve ter entre 8 e 72 caracteres"],
       });
       expect(usuarioService.criar).not.toHaveBeenCalled();
     }

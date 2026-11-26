@@ -67,7 +67,6 @@ describe("validate (middleware de validação com Zod)", () => {
       expect(ruim.status).toBe(400);
       expect(await ruim.json()).toEqual({
         mensagem: "limit deve ser numérico",
-        erros: ["limit: limit deve ser numérico"],
       });
     } finally {
       await new Promise((resolve) => servidor.close(resolve));

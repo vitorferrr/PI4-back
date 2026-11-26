@@ -196,7 +196,6 @@ describe("POST /visitas", () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: "erro do service",
-      erros: ["erro do service"],
     });
   });
 
@@ -212,7 +211,6 @@ describe("POST /visitas", () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: "denunciado vazio, data inválida",
-      erros: ["denunciado vazio", "data inválida"],
     });
   });
 
@@ -349,7 +347,6 @@ describe.each([
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: "transição inválida",
-      erros: ["transição inválida"],
     });
   });
 
@@ -410,7 +407,6 @@ describe("PATCH /visitas/:id/iniciar com localização", () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: "A latitude deve ser um número entre -90 e 90",
-      erros: ["latitude: A latitude deve ser um número entre -90 e 90"],
     });
     expect(visitaService.buscarPorId).not.toHaveBeenCalled();
     expect(visitaService.iniciar).not.toHaveBeenCalled();
@@ -420,10 +416,10 @@ describe("PATCH /visitas/:id/iniciar com localização", () => {
     const resposta = await requisitar("PATCH", "/10/iniciar", "fiscalizador", 5, {});
 
     expect(resposta.status).toBe(400);
-    expect((await resposta.json()).erros).toEqual([
-      "latitude: A latitude deve ser um número entre -90 e 90",
-      "longitude: A longitude deve ser um número entre -180 e 180",
-    ]);
+    expect(await resposta.json()).toEqual({
+      mensagem:
+        "A latitude deve ser um número entre -90 e 90; A longitude deve ser um número entre -180 e 180",
+    });
   });
 });
 
@@ -536,7 +532,6 @@ describe("PATCH /visitas/:id/observacoes", () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: erro.message,
-      erros: [erro.message],
     });
   });
 });

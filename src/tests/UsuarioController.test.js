@@ -138,7 +138,6 @@ describe("POST /usuarios (respostas do controller)", () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: "A senha é obrigatória",
-      erros: ["A senha é obrigatória"],
     });
   });
 
@@ -154,7 +153,6 @@ describe("POST /usuarios (respostas do controller)", () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: "email inválido, Role deve ser admin, gestor ou fiscalizador",
-      erros: ["email inválido", "Role deve ser admin, gestor ou fiscalizador"],
     });
   });
 });
@@ -200,7 +198,6 @@ describe("GET /usuarios (respostas do controller)", () => {
       expect(resposta.status).toBe(400);
       expect(await resposta.json()).toEqual({
         mensagem: "aprovado deve ser true ou false",
-        erros: ["aprovado: aprovado deve ser true ou false"],
       });
       expect(usuarioService.listar).not.toHaveBeenCalled();
     }
@@ -227,7 +224,6 @@ describe("PATCH /usuarios/:id/reprovar (respostas do controller)", () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
       mensagem: "Só cadastros de fiscalizador podem ser reprovados",
-      erros: ["Só cadastros de fiscalizador podem ser reprovados"],
     });
   });
 

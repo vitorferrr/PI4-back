@@ -86,12 +86,6 @@ describe("validarCriacaoUsuario", () => {
     expect(res.json).toHaveBeenCalledWith({
       mensagem:
         "O campo nome é obrigatório; Informe um email válido; A senha deve ter ao menos 6 caracteres; Perfil (role) inválido",
-      erros: [
-        "nome: O campo nome é obrigatório",
-        "email: Informe um email válido",
-        "senha: A senha deve ter ao menos 6 caracteres",
-        "role: Perfil (role) inválido",
-      ],
     });
   });
 });
@@ -167,7 +161,7 @@ describe("validarCriacaoVisita", () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json.mock.calls[0][0].erros).toHaveLength(5);
+    expect(res.json.mock.calls[0][0].mensagem.split("; ")).toHaveLength(5);
   });
 
   it("rejeita datas soltas ou inexistentes no calendário como '1', '2024' ou '2024-02-30'", async () => {
@@ -260,7 +254,7 @@ describe("validarListagemVisitas", () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json.mock.calls[0][0].erros).toHaveLength(4);
+    expect(res.json.mock.calls[0][0].mensagem.split("; ")).toHaveLength(4);
   });
 });
 
@@ -380,6 +374,6 @@ describe("validarAtualizacaoVisita", () => {
       vi.fn()
     );
     expect(res2.status).toHaveBeenCalledWith(400);
-    expect(res2.json.mock.calls[0][0].erros).toHaveLength(2);
+    expect(res2.json.mock.calls[0][0].mensagem.split("; ")).toHaveLength(2);
   });
 });

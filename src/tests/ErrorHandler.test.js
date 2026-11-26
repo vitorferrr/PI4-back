@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import errorHandler, { criarErroHttp } from "../middlewares/errorHandler.js";
 import AppError from "../utils/appError.js";
@@ -69,7 +69,7 @@ describe("errorHandler", () => {
     });
   });
 
-  it("retorna 400 com lista de erros para ValidacaoError e SequelizeValidationError", () => {
+  it("retorna 400 para SequelizeValidationError sem repetir a mensagem em erros", () => {
     const res = criarRes();
     const erro = {
       name: "SequelizeValidationError",
@@ -82,7 +82,6 @@ describe("errorHandler", () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
       mensagem: "Campo obrigatório",
-      erros: ["Campo obrigatório"],
     });
   });
 
@@ -156,7 +155,7 @@ describe("errorHandler", () => {
     });
   });
 
-  it("retorna 400 com só as mensagens do Zod e a lista de erros por campo", () => {
+  it("retorna 400 só com as mensagens do Zod, sem lista repetida", () => {
     const schema = z.object({
       body: z.object({
         email: z.email("Formato de e-mail inválido"),
@@ -171,7 +170,6 @@ describe("errorHandler", () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
       mensagem: "Formato de e-mail inválido; Campo obrigatório",
-      erros: ["email: Formato de e-mail inválido", "senha: Campo obrigatório"],
     });
   });
 
@@ -189,7 +187,6 @@ describe("errorHandler", () => {
 
     expect(res.json).toHaveBeenCalledWith({
       mensagem: "Campo obrigatório",
-      erros: ["nome: Campo obrigatório", "senha: Campo obrigatório"],
     });
   });
 
@@ -242,6 +239,59 @@ describe("errorHandler", () => {
     expect(res.status).toHaveBeenCalledWith(413);
     expect(res.json).toHaveBeenCalledWith({
       mensagem: "O corpo da requisição deve ter no máximo 1 MB",
+    });
+  });
+
+  it("tira de erros o item igual à mensagem e mantém os outros", () => {
+    const res = criarRes();
+    const erro = {
+      name: "ValidacaoError",
+      message: "A pergunta 3 não foi respondida",
+      errors: [
+        { message: "A pergunta 3 não foi respondida" },
+        { message: "A pergunta 5 não foi respondida" },
+      ],
+    };
+
+    errorHandler(erro, {}, res, vi.fn());
+
+    expect(res.json).toHaveBeenCalledWith({
+      mensagem: "A pergunta 3 não foi respondida",
+      erros: ["A pergunta 5 não foi respondida"],
+    });
+  });
+
+  describe("log em produção", () => {
+    beforeEach(() => {
+      vi.stubEnv("NODE_ENV", "production");
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it.each([
+      ["token vencido", new AppError("Token inválido ou expirado", 401)],
+      ["rota inexistente", new AppError("Rota /x não encontrada no servidor.", 404)],
+      ["validação do Zod", z.object({ a: z.string() }).safeParse({}).error],
+    ])("não registra erro esperado (%s)", (_, erro) => {
+      errorHandler(erro, {}, criarRes(), vi.fn());
+
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    it("registra AppError 5xx", () => {
+      errorHandler(new AppError("Banco de dados indisponível", 503), {}, criarRes(), vi.fn());
+
+      expect(console.error).toHaveBeenCalledWith("Error: Banco de dados indisponível");
+    });
+
+    it("registra erro inesperado (500)", () => {
+      const erro = new Error("falha no banco");
+
+      errorHandler(erro, {}, criarRes(), vi.fn());
+
+      expect(console.error).toHaveBeenCalledWith(erro);
     });
   });
 
