@@ -47,15 +47,7 @@ const validarLista = (respostas) => {
   }
 };
 
-const validarRespostas = async (respostas, transaction) => {
-  validarLista(respostas);
-
-  const perguntas = await PerguntaQuestionario.findAll({
-    where: { id: respostas.map((item) => item.pergunta_id) },
-    transaction,
-  });
-  const perguntasPorId = new Map(perguntas.map((pergunta) => [pergunta.id, pergunta]));
-
+const conferirFormatos = (respostas, perguntasPorId) => {
   const erros = [];
 
   respostas.forEach((item) => {
@@ -75,6 +67,17 @@ const validarRespostas = async (respostas, transaction) => {
   if (erros.length > 0) {
     throw erroValidacao("Há respostas inválidas", erros);
   }
+};
+
+const validarRespostas = async (respostas, transaction) => {
+  validarLista(respostas);
+
+  const perguntas = await PerguntaQuestionario.findAll({
+    where: { id: respostas.map((item) => item.pergunta_id) },
+    transaction,
+  });
+
+  conferirFormatos(respostas, new Map(perguntas.map((pergunta) => [pergunta.id, pergunta])));
 };
 
 const travarVisitaEditavel = async (visitaId, transaction) => {
@@ -187,23 +190,17 @@ const alterarDaVisita = async (visitaId, respostaId, alteracao) => {
   }
 };
 
-const atualizarDaVisita = async (visitaId, respostaId, valor) => {
-  if (typeof valor !== "string" || valor.trim() === "") {
-    throw erroValidacao("A resposta deve ser um texto preenchido");
-  }
+const atualizarDaVisita = async (visitaId, respostaId, valor) =>
+  await alterarDaVisita(visitaId, respostaId, async (resposta, transaction) => {
+    const item = { pergunta_id: resposta.pergunta_id, resposta: valor };
 
-  return await alterarDaVisita(visitaId, respostaId, async (resposta, transaction) => {
-    const formato = FORMATOS[resposta.pergunta.tipo_resposta];
-
-    if (!formato.valido(valor.trim())) {
-      throw erroValidacao(`Resposta da pergunta ${resposta.pergunta_id} ${formato.mensagem}`);
-    }
+    validarLista([item]);
+    conferirFormatos([item], new Map([[resposta.pergunta_id, resposta.pergunta]]));
 
     await resposta.update({ resposta: valor.trim() }, { transaction });
 
     return resposta;
   });
-};
 
 const removerDaVisita = async (visitaId, respostaId) =>
   await alterarDaVisita(visitaId, respostaId, async (resposta, transaction) => {

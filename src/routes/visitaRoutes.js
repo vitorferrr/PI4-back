@@ -6,6 +6,7 @@ import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 import validarId, { validarIdParametro } from "../middlewares/validarIdMiddleware.js";
 import {
+  validarAtualizacaoResposta,
   validarCriacaoVisita,
   validarListagemVisitas,
   validarRespostasQuestionario,
@@ -85,6 +86,7 @@ router.put(
   autorizar("fiscalizador"),
   validarId,
   validarIdParametro("respostaId"),
+  validarAtualizacaoResposta,
   questionarioController.atualizarResposta
 );
 

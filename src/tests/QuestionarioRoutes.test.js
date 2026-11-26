@@ -252,6 +252,20 @@ describe("respostas da visita por URL composta", () => {
       expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
     });
 
+    it.each([
+      [{}, ["A resposta deve ser um texto preenchido"]],
+      [{ resposta: "   " }, ["A resposta deve ser um texto preenchido"]],
+      [{ resposta: 5 }, ["A resposta deve ser um texto preenchido"]],
+      [[{ resposta: "Sim" }], ["O corpo da requisição deve ser um objeto JSON"]],
+    ])("responde 400 no mesmo padrão do POST para corpo %j", async (corpo, erros) => {
+      const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 5, corpo);
+
+      expect(resposta.status).toBe(400);
+      expect(await resposta.json()).toEqual({ mensagem: "Dados inválidos", erros });
+      expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
+      expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
+    });
+
     it("responde 404 quando a resposta não é da visita", async () => {
       questionarioService.atualizarDaVisita.mockResolvedValue(null);
 

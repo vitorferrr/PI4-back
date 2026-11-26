@@ -413,28 +413,48 @@ describe("respostas de uma visita (URL composta)", () => {
       ["sim_nao", "Talvez", 'Resposta da pergunta 2 deve ser "Sim", "Não" ou "Não se aplica"'],
       ["numero", "dez", "Resposta da pergunta 2 deve ser um número"],
       ["data", "31/02/2026", "Resposta da pergunta 2 deve ser uma data válida no formato DD/MM/AAAA"],
-    ])("rejeita resposta fora do formato %s", async (tipo, valor, mensagem) => {
+    ])("rejeita resposta fora do formato %s, com a mesma regra do POST", async (tipo, valor, mensagem) => {
       const resposta = respostaFalsa(tipo);
       RespostaQuestionario.findOne.mockResolvedValue(resposta);
 
       await expect(questionarioService.atualizarDaVisita(10, 3, valor)).rejects.toMatchObject({
         name: "ValidacaoError",
-        message: mensagem,
+        message: "Há respostas inválidas",
+        errors: [{ message: mensagem }],
       });
       expect(resposta.update).not.toHaveBeenCalled();
       expect(transacao.rollback).toHaveBeenCalledTimes(1);
     });
 
     it.each([[undefined], [""], ["   "], [5]])(
-      "rejeita resposta vazia ou que não é texto (%o) sem abrir transação",
+      "rejeita resposta vazia ou que não é texto (%o) sem gravar",
       async (valor) => {
+        const resposta = respostaFalsa("texto");
+        RespostaQuestionario.findOne.mockResolvedValue(resposta);
+
         await expect(questionarioService.atualizarDaVisita(10, 3, valor)).rejects.toMatchObject({
           name: "ValidacaoError",
-          message: "A resposta deve ser um texto preenchido",
+          message: "Resposta 1: a resposta deve ser um texto preenchido",
         });
-        expect(sequelize.transaction).not.toHaveBeenCalled();
+        expect(resposta.update).not.toHaveBeenCalled();
+        expect(transacao.rollback).toHaveBeenCalledTimes(1);
       }
     );
+
+    it("confere se a resposta existe antes de olhar o valor", async () => {
+      RespostaQuestionario.findOne.mockResolvedValue(null);
+
+      expect(await questionarioService.atualizarDaVisita(10, 3, "")).toBeNull();
+    });
+
+    it("confere a situação da visita antes de olhar o valor", async () => {
+      Visita.findByPk.mockResolvedValue({ id: 10, status: "concluida" });
+
+      await expect(questionarioService.atualizarDaVisita(10, 3, "")).rejects.toMatchObject({
+        name: "ValidacaoError",
+      });
+      expect(RespostaQuestionario.findOne).not.toHaveBeenCalled();
+    });
 
     it("rejeita depois que o documento foi gerado", async () => {
       Documento.findOne.mockResolvedValue({ id: 7 });
