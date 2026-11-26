@@ -13,6 +13,8 @@ export const validarParametroId = (nomeParametro = "id") => (req, res, next) => 
   next();
 };
 
+export const validarIdParametro = validarParametroId;
+
 const validarId = validarParametroId("id");
 
 export default validarId;

@@ -150,15 +150,7 @@ const validarLista = (respostas) => {
   }
 };
 
-const validarRespostas = async (respostas, transaction) => {
-  validarLista(respostas);
-
-  const perguntas = await PerguntaQuestionario.findAll({
-    where: { id: respostas.map((item) => item.pergunta_id) },
-    transaction,
-  });
-  const perguntasPorId = new Map(perguntas.map((pergunta) => [pergunta.id, pergunta]));
-
+const conferirFormatos = (respostas, perguntasPorId) => {
   const erros = [];
 
   respostas.forEach((item) => {
@@ -180,35 +172,69 @@ const validarRespostas = async (respostas, transaction) => {
   }
 };
 
+const validarRespostas = async (respostas, transaction) => {
+  validarLista(respostas);
+
+  const perguntas = await PerguntaQuestionario.findAll({
+    where: { id: respostas.map((item) => item.pergunta_id) },
+    transaction,
+  });
+
+  conferirFormatos(respostas, new Map(perguntas.map((pergunta) => [pergunta.id, pergunta])));
+};
+
+const includePergunta = {
+  model: PerguntaQuestionario,
+  as: "pergunta",
+  attributes: ["id", "texto", "tipo_resposta", "ordem"],
+};
+
+const listarDaVisita = async (visitaId) =>
+  await RespostaQuestionario.findAll({
+    where: { visita_id: visitaId },
+    include: [includePergunta],
+    order: [[includePergunta, "ordem", "ASC"]],
+  });
+
+const travarVisitaEditavel = async (visitaId, transaction) => {
+  const visita = await Visita.findByPk(visitaId, {
+    attributes: ["id", "status"],
+    transaction,
+    lock: transaction.LOCK.UPDATE,
+  });
+
+  if (!visita) {
+    return null;
+  }
+
+  if (visita.status !== "em_andamento") {
+    throw erroValidacao("As respostas só podem ser alteradas em visitas em andamento");
+  }
+
+  const documento = await Documento.findOne({
+    attributes: ["id"],
+    where: { visita_id: visitaId },
+    transaction,
+  });
+
+  if (documento) {
+    throw erroValidacao(
+      "O documento da visita já foi gerado; as respostas não podem mais ser alteradas"
+    );
+  }
+
+  return visita;
+};
+
 const salvarRespostas = async (visitaId, respostas) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const visita = await Visita.findByPk(visitaId, {
-      attributes: ["id", "status"],
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
+    const visita = await travarVisitaEditavel(visitaId, transaction);
 
     if (!visita) {
       await transaction.rollback();
       return null;
-    }
-
-    if (visita.status !== "em_andamento") {
-      throw erroValidacao("Só é possível responder o questionário de visitas em andamento");
-    }
-
-    const documento = await Documento.findOne({
-      attributes: ["id"],
-      where: { visita_id: visitaId },
-      transaction,
-    });
-
-    if (documento) {
-      throw erroValidacao(
-        "O documento da visita já foi gerado; as respostas não podem mais ser alteradas"
-      );
     }
 
     await validarRespostas(respostas, transaction);
@@ -232,11 +258,56 @@ const salvarRespostas = async (visitaId, respostas) => {
     throw erro;
   }
 
-  return await RespostaQuestionario.findAll({
-    where: { visita_id: visitaId },
-    order: [["pergunta_id", "ASC"]],
-  });
+  return await listarDaVisita(visitaId);
 };
+
+const buscarDaVisita = async (visitaId, respostaId, transaction) =>
+  await RespostaQuestionario.findOne({
+    where: { id: respostaId, visita_id: visitaId },
+    include: [includePergunta],
+    transaction,
+  });
+
+const alterarDaVisita = async (visitaId, respostaId, alteracao) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await travarVisitaEditavel(visitaId, transaction);
+    const resposta = visita && (await buscarDaVisita(visitaId, respostaId, transaction));
+
+    if (!resposta) {
+      await transaction.rollback();
+      return null;
+    }
+
+    const resultado = await alteracao(resposta, transaction);
+    await transaction.commit();
+
+    return resultado;
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+};
+
+const atualizarDaVisita = async (visitaId, respostaId, valor) =>
+  await alterarDaVisita(visitaId, respostaId, async (resposta, transaction) => {
+    const item = { pergunta_id: resposta.pergunta_id, resposta: valor };
+
+    validarLista([item]);
+    conferirFormatos([item], new Map([[resposta.pergunta_id, resposta.pergunta]]));
+
+    await resposta.update({ resposta: valor.trim() }, { transaction });
+
+    return resposta;
+  });
+
+const removerDaVisita = async (visitaId, respostaId) =>
+  await alterarDaVisita(visitaId, respostaId, async (resposta, transaction) => {
+    await resposta.destroy({ transaction });
+
+    return true;
+  });
 
 export default {
   listar,
@@ -245,4 +316,8 @@ export default {
   atualizar,
   remover,
   salvarRespostas,
+  listarDaVisita,
+  buscarDaVisita,
+  atualizarDaVisita,
+  removerDaVisita,
 };

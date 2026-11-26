@@ -272,6 +272,20 @@ export const validarListagemVisitas = (req, res, next) => {
   return finalizarValidacao(res, next, erros);
 };
 
+export const validarAtualizacaoResposta = (req, res, next) => {
+  if (!ehObjeto(req.body)) {
+    return responderErro(res, 400, "Dados inválidos", [
+      "O corpo da requisição deve ser um objeto JSON",
+    ]);
+  }
+
+  const erros = textoPreenchido(req.body.resposta)
+    ? []
+    : ["A resposta deve ser um texto preenchido"];
+
+  return finalizarValidacao(res, next, erros);
+};
+
 export const validarRespostasQuestionario = (req, res, next) => {
   if (!ehObjeto(req.body)) {
     return responderErro(res, 400, "Dados inválidos", [
