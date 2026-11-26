@@ -135,7 +135,10 @@ describe("cadastro de usuário", () => {
     });
 
     expect(Usuario.findOne).toHaveBeenCalledWith({ where: { email: "bia@exemplo.com" } });
-    expect(Usuario.create).toHaveBeenCalledWith(expect.objectContaining({ email: "bia@exemplo.com" }));
+    expect(Usuario.create).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "bia@exemplo.com" }),
+      { transaction: undefined }
+    );
     expect(resultado.email).toBe("bia@exemplo.com");
   });
 });

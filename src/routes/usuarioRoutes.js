@@ -54,6 +54,14 @@ router.patch(
   usuarioController.reprovar
 );
 
+router.post(
+  "/:id/reenviar-senha",
+  autenticar,
+  autorizar("admin"),
+  validarId,
+  usuarioController.reenviarSenha
+);
+
 router.delete(
   "/:id",
   autenticar,
