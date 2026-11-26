@@ -145,6 +145,9 @@ export const enviarDocumentoVisita = async ({ para, numero, estabelecimento, pdf
   });
 };
 
+const AVISO_ENGANO =
+  "Se você não esperava este e-mail, avise o Procon Jaboatão para que o acesso seja cancelado.";
+
 const PERFIS_SENHA = { admin: "administrador", gestor: "gestor", fiscalizador: "fiscalizador" };
 const CID_FAIXA = "faixa-topo@constata";
 
@@ -160,12 +163,11 @@ const escaparHtml = (texto) =>
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
   );
 
-const htmlSenhaGerada = ({ primeiroNome, autor, perfil, senha }) => `<!doctype html>
+const htmlSenhaGerada = ({ titulo, apresentacao, senha }) => `<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@600&amp;display=swap" rel="stylesheet">
 </head>
 <body style="margin:0;padding:0;background:#F5F5F7">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F5F7">
@@ -174,8 +176,8 @@ const htmlSenhaGerada = ({ primeiroNome, autor, perfil, senha }) => `<!doctype h
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;background:#FFFFFF;border-radius:18px">
 <tr><td style="padding:40px 40px 36px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif;color:#1C1C1E;-webkit-font-smoothing:antialiased">
 <p style="margin:0 0 22px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:21px;line-height:1;text-transform:uppercase;color:#172F6E">Constata</p>
-<h1 style="margin:0 0 22px;font-size:28px;font-weight:700;letter-spacing:-0.5px;line-height:1.2;color:#1C1C1E">Olá, ${primeiroNome}. Seu acesso está pronto.</h1>
-<p style="margin:0 0 22px;font-size:16px;line-height:1.55;color:#3A3A3C">${autor} cadastrou você como ${perfil} no Constata, o sistema de visitas do Procon Jaboatão. Sua senha de acesso já foi gerada.</p>
+<h1 style="margin:0 0 22px;font-size:28px;font-weight:700;letter-spacing:-0.5px;line-height:1.2;color:#1C1C1E">${titulo}</h1>
+<p style="margin:0 0 22px;font-size:16px;line-height:1.55;color:#3A3A3C">${apresentacao}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px">
 <tr><td align="center" style="padding:18px 16px;border-radius:12px;background:#F2F2F7;border:1px dashed #C7C7CC">
 <p style="margin:0 0 6px;font-size:12px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:#6E6E73">Sua senha</p>
@@ -184,7 +186,7 @@ const htmlSenhaGerada = ({ primeiroNome, autor, perfil, senha }) => `<!doctype h
 </table>
 <p style="margin:0 0 22px;font-size:14px;line-height:1.55;color:#6E6E73">Toque duas vezes na senha para selecionar e copiar. Entre com este e-mail no app, pelo celular, ou no painel, pelo navegador do computador.</p>
 <div style="height:1px;line-height:1px;font-size:0;background:#E3E3E6;margin:0 0 22px">&nbsp;</div>
-<p style="margin:0;font-size:13px;line-height:1.55;color:#8E8E93">Você vai entrar com este e-mail. Se não esperava este convite, ignore a mensagem e nenhuma conta será ativada.</p>
+<p style="margin:0;font-size:13px;line-height:1.55;color:#8E8E93">Você vai entrar com este e-mail. ${AVISO_ENGANO}</p>
 </td></tr>
 </table>
 </td></tr>
@@ -192,7 +194,7 @@ const htmlSenhaGerada = ({ primeiroNome, autor, perfil, senha }) => `<!doctype h
 </body>
 </html>`;
 
-export const enviarSenhaGerada = async ({ para, nome, quemCadastrou, role, senha } = {}) => {
+export const enviarSenhaGerada = async ({ para, nome, quemCadastrou, role, senha, reenvio = false } = {}) => {
   const perfil = PERFIS_SENHA[role];
 
   if (!perfil) throw erroValidacao("Perfil inválido para o e-mail de acesso");
@@ -200,25 +202,30 @@ export const enviarSenhaGerada = async ({ para, nome, quemCadastrou, role, senha
 
   const primeiroNome = String(nome ?? "").trim().split(/\s+/)[0] || "servidor";
   const autor = String(quemCadastrou ?? "").trim() || "O administrador";
+  const titulo = reenvio
+    ? `Olá, ${primeiroNome}. Sua senha foi renovada.`
+    : `Olá, ${primeiroNome}. Seu acesso está pronto.`;
+  const apresentacao = reenvio
+    ? `${autor} gerou uma nova senha para o seu acesso ao Constata, o sistema de visitas do Procon Jaboatão. A senha anterior deixou de valer.`
+    : `${autor} cadastrou você como ${perfil} no Constata, o sistema de visitas do Procon Jaboatão. Sua senha de acesso já foi gerada.`;
 
   return await enviarEmail({
     para,
-    assunto: "Constata - Seu acesso está pronto",
+    assunto: reenvio ? "Constata - Sua nova senha de acesso" : "Constata - Seu acesso está pronto",
     texto: [
-      `Olá, ${primeiroNome}. Seu acesso está pronto.`,
+      titulo,
       "",
-      `${autor} cadastrou você como ${perfil} no Constata, o sistema de visitas do Procon Jaboatão. Sua senha de acesso já foi gerada.`,
+      apresentacao,
       "",
       `Sua senha: ${senha}`,
       "",
       "Entre com este e-mail no app, pelo celular, ou no painel, pelo navegador do computador.",
       "",
-      "Você vai entrar com este e-mail. Se não esperava este convite, ignore a mensagem e nenhuma conta será ativada.",
+      `Você vai entrar com este e-mail. ${AVISO_ENGANO}`,
     ].join("\n"),
     html: htmlSenhaGerada({
-      primeiroNome: escaparHtml(primeiroNome),
-      autor: escaparHtml(autor),
-      perfil,
+      titulo: escaparHtml(titulo),
+      apresentacao: escaparHtml(apresentacao),
       senha: escaparHtml(senha),
     }),
     anexos: [{ nome: "faixa-topo.png", conteudo: lerFaixaTopo(), tipo: "image/png", cid: CID_FAIXA }],

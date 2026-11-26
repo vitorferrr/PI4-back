@@ -1,6 +1,6 @@
 import { randomInt } from "node:crypto";
 
-const CARACTERES = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+const CARACTERES = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const bloco = () => Array.from({ length: 4 }, () => CARACTERES[randomInt(CARACTERES.length)]).join("");
 
@@ -9,7 +9,7 @@ const gerarSenha = () => {
 
   do {
     senha = [bloco(), bloco(), bloco()].join("-");
-  } while (!/[A-Za-z]/.test(senha) || !/\d/.test(senha));
+  } while (!/[A-Z]/.test(senha) || !/\d/.test(senha));
 
   return senha;
 };

@@ -16,6 +16,7 @@ vi.mock("../services/usuarioService.js", () => ({
     remover: vi.fn(),
     aprovar: vi.fn(),
     reprovar: vi.fn(),
+    reenviarSenha: vi.fn(),
   },
 }));
 
@@ -69,6 +70,7 @@ const rotas = [
   ["DELETE", "/1", "remover", ["admin"], ["gestor", "fiscalizador"]],
   ["PATCH", "/1/aprovar", "aprovar", ["admin"], ["gestor", "fiscalizador"]],
   ["PATCH", "/1/reprovar", "reprovar", ["admin"], ["gestor", "fiscalizador"]],
+  ["POST", "/1/reenviar-senha", "reenviarSenha", ["admin"], ["gestor", "fiscalizador"]],
 ];
 
 describe.each(rotas)("%s /usuarios%s", (metodo, caminho, funcaoService, permitidos, bloqueados) => {
@@ -118,11 +120,11 @@ describe("POST /usuarios (respostas do controller)", () => {
     expect(usuarioService.criarComSenhaGerada).toHaveBeenCalledWith(novoUsuario, 1);
   });
 
-  it("ignora a senha enviada pelo admin, porque ela é gerada no servidor", async () => {
+  it("aceita corpo com senha e deixa o service gerar a dele", async () => {
     const resposta = await requisitar("POST", "", "admin", { ...novoUsuario, senha: "123456" });
 
     expect(resposta.status).toBe(201);
-    expect(usuarioService.criarComSenhaGerada).toHaveBeenCalledWith(novoUsuario, 1);
+    expect(usuarioService.criarComSenhaGerada).toHaveBeenCalledWith({ ...novoUsuario, senha: "123456" }, 1);
   });
 
   it("responde 503 quando o e-mail com a senha não sai", async () => {
@@ -175,6 +177,42 @@ describe("POST /usuarios (respostas do controller)", () => {
     expect(await resposta.json()).toEqual({
       mensagem: "email inválido, Role deve ser admin, gestor ou fiscalizador",
     });
+  });
+});
+
+describe("POST /usuarios/:id/reenviar-senha (respostas do controller)", () => {
+  it("responde 200 com o usuário e repassa o id e o admin ao service", async () => {
+    const resposta = await requisitar("POST", "/7/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual(usuarioFalso);
+    expect(usuarioService.reenviarSenha).toHaveBeenCalledWith("7", 1);
+  });
+
+  it("responde 404 quando o usuário não existe", async () => {
+    usuarioService.reenviarSenha.mockResolvedValue(null);
+
+    const resposta = await requisitar("POST", "/99/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(404);
+    expect(await resposta.json()).toEqual({ mensagem: "Usuário não encontrado" });
+  });
+
+  it("responde 503 quando o e-mail com a nova senha não sai", async () => {
+    usuarioService.reenviarSenha.mockRejectedValue(
+      new AppError("Não foi possível enviar o e-mail com a nova senha. A senha anterior continua valendo; tente novamente.", 503)
+    );
+
+    const resposta = await requisitar("POST", "/7/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(503);
+  });
+
+  it("responde 400 para id inválido sem chamar o service", async () => {
+    const resposta = await requisitar("POST", "/abc/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(400);
+    expect(usuarioService.reenviarSenha).not.toHaveBeenCalled();
   });
 });
 

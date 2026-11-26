@@ -49,12 +49,16 @@ const criar = async (dados, { transaction } = {}) => {
   return semSenha(usuario);
 };
 
-const criarComSenhaGerada = async (dados, autorId) => {
+const gravarEEnviarSenha = async ({ autorId, reenvio = false, mensagemFalha }, gravar) => {
   const senha = gerarSenha();
   const autor = autorId ? await Usuario.findByPk(autorId, { attributes: ["nome"] }) : null;
 
   return await sequelize.transaction(async (transaction) => {
-    const usuario = await criar({ ...dados, senha }, { transaction });
+    const usuario = await gravar(senha, transaction);
+
+    if (!usuario) {
+      return null;
+    }
 
     try {
       await enviarSenhaGerada({
@@ -63,18 +67,47 @@ const criarComSenhaGerada = async (dados, autorId) => {
         quemCadastrou: autor?.nome,
         role: usuario.role,
         senha,
+        reenvio,
       });
     } catch (erro) {
       if (erro.name !== "EmailError") throw erro;
-      throw new AppError(
-        "Não foi possível enviar o e-mail com a senha. O usuário não foi cadastrado; tente novamente.",
-        503
-      );
+      throw new AppError(mensagemFalha, 503);
     }
 
     return usuario;
   });
 };
+
+const criarComSenhaGerada = async (dados, autorId) =>
+  gravarEEnviarSenha(
+    {
+      autorId,
+      mensagemFalha:
+        "Não foi possível enviar o e-mail com a senha. O usuário não foi cadastrado; tente novamente.",
+    },
+    (senha, transaction) => criar({ ...dados, senha }, { transaction })
+  );
+
+const reenviarSenha = async (id, autorId) =>
+  gravarEEnviarSenha(
+    {
+      autorId,
+      reenvio: true,
+      mensagemFalha:
+        "Não foi possível enviar o e-mail com a nova senha. A senha anterior continua valendo; tente novamente.",
+    },
+    async (senha, transaction) => {
+      const usuario = await Usuario.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+
+      if (!usuario) {
+        return null;
+      }
+
+      await usuario.update({ senha_hash: await bcrypt.hash(senha, 10) }, { transaction });
+
+      return semSenha(usuario);
+    }
+  );
 
 const listar = async ({ aprovado } = {}) => {
   return await Usuario.findAll({
@@ -170,6 +203,7 @@ const remover = async (id) => {
 export default {
   criar,
   criarComSenhaGerada,
+  reenviarSenha,
   listar,
   buscarPorId,
   atualizar,

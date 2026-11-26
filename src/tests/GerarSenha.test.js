@@ -3,15 +3,15 @@ import gerarSenha from "../utils/gerarSenha.js";
 
 describe("gerarSenha", () => {
   it("gera três blocos de 4 caracteres separados por hífen", () => {
-    expect(gerarSenha()).toMatch(/^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/);
+    expect(gerarSenha()).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
   });
 
-  it("sempre tem letras e números e evita caracteres parecidos", () => {
+  it("usa só maiúsculas e números, sempre os dois, sem caracteres parecidos", () => {
     for (let i = 0; i < 200; i += 1) {
       const senha = gerarSenha();
-      expect(senha).toMatch(/[A-Za-z]/);
+      expect(senha).toMatch(/[A-Z]/);
       expect(senha).toMatch(/\d/);
-      expect(senha).not.toMatch(/[0O1lIoiL]/);
+      expect(senha).not.toMatch(/[a-z01OI]/);
     }
   });
 
