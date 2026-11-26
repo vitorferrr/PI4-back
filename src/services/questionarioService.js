@@ -104,6 +104,23 @@ const atualizar = async (id, dados) => {
   }
 
   const validado = validarDadosPergunta(dados, { parcial: true });
+
+  if (
+    validado.tipo_resposta !== undefined &&
+    validado.tipo_resposta !== pergunta.tipo_resposta
+  ) {
+    const respostaExistente = await RespostaQuestionario.findOne({
+      attributes: ["id"],
+      where: { pergunta_id: id },
+    });
+
+    if (respostaExistente) {
+      throw erroValidacao(
+        "Pergunta já respondida em visitas; o tipo_resposta não pode ser alterado"
+      );
+    }
+  }
+
   return await pergunta.update(validado);
 };
 

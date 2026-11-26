@@ -163,19 +163,37 @@ const buscarPorId = async (id) => {
 const CAMPOS_EDITAVEIS = [
   "denunciado",
   "gestor_id",
-  "status",
-  "latitude",
-  "longitude",
   "data_agendada",
-  "data_realizacao",
   "observacoes_livres",
   ...CAMPOS_ESTABELECIMENTO,
 ];
+
+const validarGestor = async (gestorId, transaction) => {
+  const gestor = Number.isInteger(gestorId) && gestorId > 0
+    ? await Usuario.findByPk(gestorId, {
+        attributes: ["id", "role"],
+        transaction,
+      })
+    : null;
+
+  if (gestor?.role !== "gestor") {
+    throw erroValidacao("O gestor informado não existe ou não possui perfil de gestor");
+  }
+};
 
 const atualizar = async (id, dados, fiscalizadoresIds) => {
   if (fiscalizadoresIds !== undefined) await validarFiscalizadores(fiscalizadoresIds);
 
   const dadosAtualizados = escolherCampos(dados, CAMPOS_EDITAVEIS);
+
+  if (dados.status !== undefined) {
+    if (dados.status !== "cancelada") {
+      throw erroValidacao(
+        "Na edição da visita, o único status permitido é 'cancelada'"
+      );
+    }
+    dadosAtualizados.status = "cancelada";
+  }
 
   const transaction = await sequelize.transaction();
 
@@ -185,6 +203,21 @@ const atualizar = async (id, dados, fiscalizadoresIds) => {
     if (!visita) {
       await transaction.rollback();
       return null;
+    }
+
+    if (dadosAtualizados.gestor_id !== undefined) {
+      await validarGestor(dadosAtualizados.gestor_id, transaction);
+    }
+
+    if (
+      dadosAtualizados.status === "cancelada" &&
+      !["agendada", "em_andamento"].includes(visita.status)
+    ) {
+      throw erroValidacao("Somente visitas agendadas ou em andamento podem ser canceladas");
+    }
+
+    if (fiscalizadoresIds !== undefined && visita.status !== "agendada") {
+      throw erroValidacao("Só é possível alterar fiscalizadores de visitas agendadas");
     }
 
     const documento = await Documento.findOne({
@@ -338,6 +371,10 @@ const remover = async (id) => {
       return null;
     }
 
+    if (visita.status !== "agendada") {
+      throw erroValidacao("Somente visitas agendadas podem ser apagadas");
+    }
+
     const documento = await Documento.findOne({
       attributes: ["id"],
       where: { visita_id: id },
@@ -360,10 +397,16 @@ const remover = async (id) => {
   }
 };
 
-const garantirDocumentoNaoGerado = async (visitaId, transaction) => {
+const garantirDocumentoNaoGerado = async (visita, transaction) => {
+  if (visita.status !== "agendada") {
+    throw erroValidacao(
+      "Só é possível alterar fiscalizadores de visitas agendadas"
+    );
+  }
+
   const documento = await Documento.findOne({
     attributes: ["id"],
-    where: { visita_id: visitaId },
+    where: { visita_id: visita.id },
     transaction,
   });
 
@@ -394,7 +437,7 @@ const adicionarFiscalizador = async (visitaId, fiscalizadorId) => {
 
   try {
     const visita = await Visita.findByPk(visitaId, {
-      attributes: ["id"],
+      attributes: ["id", "status"],
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
@@ -404,7 +447,7 @@ const adicionarFiscalizador = async (visitaId, fiscalizadorId) => {
       return null;
     }
 
-    await garantirDocumentoNaoGerado(visitaId, transaction);
+    await garantirDocumentoNaoGerado(visita, transaction);
 
     const atuais = await visita.getFiscalizadores({
       attributes: ["id"],
@@ -435,7 +478,7 @@ const substituirFiscalizadores = async (visitaId, fiscalizadoresIds) => {
 
   try {
     const visita = await Visita.findByPk(visitaId, {
-      attributes: ["id"],
+      attributes: ["id", "status"],
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
@@ -445,7 +488,7 @@ const substituirFiscalizadores = async (visitaId, fiscalizadoresIds) => {
       return null;
     }
 
-    await garantirDocumentoNaoGerado(visitaId, transaction);
+    await garantirDocumentoNaoGerado(visita, transaction);
 
     await visita.setFiscalizadores([...new Set(fiscalizadoresIds)], {
       transaction,
@@ -464,7 +507,7 @@ const removerFiscalizador = async (visitaId, fiscalizadorId) => {
 
   try {
     const visita = await Visita.findByPk(visitaId, {
-      attributes: ["id"],
+      attributes: ["id", "status"],
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
@@ -474,7 +517,7 @@ const removerFiscalizador = async (visitaId, fiscalizadorId) => {
       return null;
     }
 
-    await garantirDocumentoNaoGerado(visitaId, transaction);
+    await garantirDocumentoNaoGerado(visita, transaction);
 
     const idFiscalizador = Number(fiscalizadorId);
     const vinculados = await visita.getFiscalizadores({

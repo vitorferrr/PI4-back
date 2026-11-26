@@ -508,6 +508,17 @@ describe("PUT /visitas/:id", () => {
     expect(resposta.status).toBe(400);
     expect(visitaService.buscarPorId).not.toHaveBeenCalled();
   });
+
+  it("responde 400 quando o corpo é vazio ou data_agendada é inválida", async () => {
+    const vazio = await requisitar("PUT", "/10", "admin", 1, {});
+    expect(vazio.status).toBe(400);
+
+    const dataInvalida = await requisitar("PUT", "/10", "admin", 1, {
+      data_agendada: "amanha",
+    });
+    expect(dataInvalida.status).toBe(400);
+    expect(visitaService.buscarPorId).not.toHaveBeenCalled();
+  });
 });
 
 describe("DELETE /visitas/:id", () => {

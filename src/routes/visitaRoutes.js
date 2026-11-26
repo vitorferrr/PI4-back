@@ -6,6 +6,7 @@ import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 import validarId, { validarParametroId } from "../middlewares/validarIdMiddleware.js";
 import {
+  validarAtualizacaoVisita,
   validarCriacaoVisita,
   validarListagemVisitas,
   validarRespostasQuestionario,
@@ -42,6 +43,7 @@ router.put(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
+  validarAtualizacaoVisita,
   visitaController.atualizar
 );
 

@@ -430,4 +430,21 @@ describe("CRUD de perguntas (questionarioService)", () => {
     );
     expect(destroy).not.toHaveBeenCalled();
   });
+
+  it("recusa alterar tipo_resposta quando a pergunta já foi respondida em visitas", async () => {
+    const update = vi.fn();
+    models.PerguntaQuestionario.findByPk.mockResolvedValueOnce({
+      id: 1,
+      tipo_resposta: "sim_nao",
+      update,
+    });
+    models.RespostaQuestionario.findOne.mockResolvedValueOnce({ id: 42 });
+
+    await expect(
+      questionarioService.atualizar(1, { tipo_resposta: "numero" })
+    ).rejects.toThrow(
+      "Pergunta já respondida em visitas; o tipo_resposta não pode ser alterado"
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
 });
