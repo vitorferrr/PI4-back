@@ -40,4 +40,8 @@ describe("models/index.js de verdade", () => {
   it("registra a tabela de tokens revogados", () => {
     expect(models.TokenRevogado.getTableName()).toBe("tokens_revogados");
   });
+
+  it("registra a tabela de refresh tokens", () => {
+    expect(models.RefreshToken.getTableName()).toBe("refresh_tokens");
+  });
 });

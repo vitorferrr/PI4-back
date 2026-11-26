@@ -9,6 +9,7 @@ import getRespostaQuestionarioModel from "./respostaQuestionario.js";
 import getDocumentoModel from "./documento.js";
 import getAssinaturaModel from "./assinatura.js";
 import getTokenRevogadoModel from "./tokenRevogado.js";
+import getRefreshTokenModel from "./refreshToken.js";
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: "postgres",
@@ -24,6 +25,7 @@ const models = {
     Documento: getDocumentoModel(sequelize, Sequelize),
     Assinatura: getAssinaturaModel(sequelize, Sequelize),
     TokenRevogado: getTokenRevogadoModel(sequelize, Sequelize),
+    RefreshToken: getRefreshTokenModel(sequelize, Sequelize),
 };
 
 Object.keys(models).forEach((key) => {

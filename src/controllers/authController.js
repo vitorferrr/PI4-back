@@ -46,7 +46,7 @@ const signup = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    await authService.logout(req.usuario);
+    await authService.logout(req.usuario, req.body?.refreshToken);
 
     return res.status(204).send();
   } catch (erro) {
@@ -54,8 +54,31 @@ const logout = async (req, res) => {
   }
 };
 
+const refresh = async (req, res) => {
+  try {
+    const resultado = await authService.refresh(req.body?.refreshToken);
+
+    return res.status(200).json(resultado);
+  } catch (erro) {
+    if (erro.name === "RefreshTokenError") {
+      return res.status(401).json({ mensagem: erro.message });
+    }
+
+    if (erro.name === "CadastroPendenteError") {
+      return res.status(403).json({ mensagem: erro.message });
+    }
+
+    console.error(erro);
+
+    return res.status(500).json({
+      mensagem: "Erro ao renovar a sessão",
+    });
+  }
+};
+
 export default {
   login,
   signup,
   logout,
+  refresh,
 };

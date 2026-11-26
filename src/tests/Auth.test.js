@@ -12,16 +12,22 @@ vi.mock("../models/index.js", () => ({
   default: {
     Usuario: {
       findOne: vi.fn(),
+      findByPk: vi.fn(),
     },
     TokenRevogado: {
       findOne: vi.fn(),
       bulkCreate: vi.fn(),
       destroy: vi.fn(),
     },
+    RefreshToken: {
+      create: vi.fn(),
+      findOne: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }));
 
-const { TokenRevogado, Usuario } = models;
+const { RefreshToken, TokenRevogado, Usuario } = models;
 const SEGREDO = "segredo-de-teste";
 
 const criarRes = () => {
@@ -35,6 +41,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.JWT_SECRET = SEGREDO;
   vi.spyOn(console, "error").mockImplementation(() => {});
+  RefreshToken.create.mockResolvedValue({ id: 1 });
 });
 
 describe("login (authService)", () => {
@@ -59,13 +66,17 @@ describe("login (authService)", () => {
     });
     expect(payload).toMatchObject({ id: 1, role: "gestor" });
     expect(payload.jti).toMatch(/^[0-9a-f-]{36}$/);
-    expect(payload.exp - payload.iat).toBe(3600);
+    expect(payload.exp - payload.iat).toBe(900);
     expect(resultado.usuario).toEqual({
       id: 1,
       nome: "Bia",
       email: "bia@exemplo.com",
       role: "gestor",
     });
+    expect(resultado.refreshToken).toMatch(/^[\w-]{40,}$/);
+    expect(RefreshToken.create).toHaveBeenCalledWith(
+      expect.objectContaining({ usuario_id: 1 })
+    );
   });
 
   it("procura o email sem espaços e em minúsculas", async () => {
@@ -141,6 +152,122 @@ describe("login (authService)", () => {
     await expect(
       authService.login({ email: "bia@exemplo.com", senha: "errada" })
     ).rejects.toThrow("Email ou senha inválidos");
+  });
+});
+
+describe("refresh (authService)", () => {
+  const SEGREDOS_HASH = /^[0-9a-f]{64}$/;
+
+  it("troca um refresh token válido por um novo par e marca o antigo como usado", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      id: 10,
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn().mockResolvedValue(),
+    });
+    Usuario.findByPk.mockResolvedValue({ id: 1, nome: "Bia", email: "bia@exemplo.com", role: "gestor" });
+
+    const resultado = await authService.refresh("token-recebido-do-cliente");
+
+    const [{ where }] = RefreshToken.findOne.mock.calls[0];
+    expect(where.token_hash).toMatch(SEGREDOS_HASH);
+    const registro = await RefreshToken.findOne.mock.results[0].value;
+    expect(registro.update).toHaveBeenCalledWith({ usado_em: expect.any(Date) });
+    expect(resultado.usuario).toEqual({ id: 1, nome: "Bia", email: "bia@exemplo.com", role: "gestor" });
+    expect(resultado.refreshToken).not.toBe("token-recebido-do-cliente");
+  });
+
+  it("rejeita token inexistente, vazio ou que não é texto, sem consultar o banco quando vazio", async () => {
+    for (const valor of [undefined, "", "   ", 123]) {
+      await expect(authService.refresh(valor)).rejects.toMatchObject({ name: "RefreshTokenError" });
+    }
+    expect(RefreshToken.findOne).not.toHaveBeenCalled();
+
+    RefreshToken.findOne.mockResolvedValue(null);
+    await expect(authService.refresh("token-desconhecido")).rejects.toMatchObject({
+      name: "RefreshTokenError",
+    });
+  });
+
+  it("rejeita token vencido", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() - 1000),
+      update: vi.fn(),
+    });
+
+    await expect(authService.refresh("token-vencido")).rejects.toMatchObject({
+      name: "RefreshTokenError",
+    });
+  });
+
+  it("recusa um refresh token já usado e revoga toda a sessão do usuário (reuso = possível roubo)", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      usuario_id: 1,
+      usado_em: new Date(),
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn(),
+    });
+
+    await expect(authService.refresh("token-reusado")).rejects.toMatchObject({
+      name: "RefreshTokenError",
+    });
+
+    expect(RefreshToken.update).toHaveBeenCalledWith(
+      { revogado_em: expect.any(Date) },
+      { where: { usuario_id: 1, usado_em: null, revogado_em: null } }
+    );
+  });
+
+  it("recusa um refresh token já revogado", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: new Date(),
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn(),
+    });
+
+    await expect(authService.refresh("token-revogado")).rejects.toMatchObject({
+      name: "RefreshTokenError",
+    });
+  });
+
+  it("rejeita quando o usuário do token não existe mais", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      usuario_id: 99,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn(),
+    });
+    Usuario.findByPk.mockResolvedValue(null);
+
+    await expect(authService.refresh("token-de-usuario-removido")).rejects.toMatchObject({
+      name: "RefreshTokenError",
+    });
+  });
+
+  it("bloqueia e revoga o token de cadastro ainda não aprovado", async () => {
+    const registro = {
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn().mockResolvedValue(),
+    };
+    RefreshToken.findOne.mockResolvedValue(registro);
+    Usuario.findByPk.mockResolvedValue({ id: 1, aprovado: false });
+
+    await expect(authService.refresh("token-pendente")).rejects.toMatchObject({
+      name: "CadastroPendenteError",
+    });
+    expect(registro.update).toHaveBeenCalledWith({ revogado_em: expect.any(Date) });
   });
 });
 
@@ -346,6 +473,27 @@ describe("logout (authService)", () => {
     await expect(authService.logout({ jti: "abc", exp: 1_900_000_000 })).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalledWith("Falha ao limpar tokens revogados vencidos:", "banco lento");
   });
+
+  it("revoga o refresh token informado", async () => {
+    await authService.logout({ jti: "abc", exp: 1_900_000_000 }, "refresh-do-cliente");
+
+    expect(RefreshToken.update).toHaveBeenCalledWith(
+      { revogado_em: expect.any(Date) },
+      {
+        where: {
+          token_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          usado_em: null,
+          revogado_em: null,
+        },
+      }
+    );
+  });
+
+  it("não chama o RefreshToken quando nenhum refresh token é informado", async () => {
+    await authService.logout({ jti: "abc", exp: 1_900_000_000 });
+
+    expect(RefreshToken.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("middleware autorizar", () => {
@@ -446,5 +594,62 @@ describe("authController.login", () => {
     expect(res.json).toHaveBeenCalledWith({
       mensagem: "Erro ao realizar login",
     });
+  });
+});
+
+describe("authController.refresh", () => {
+  it("retorna 200 e o novo par de tokens quando a troca é bem-sucedida", async () => {
+    const req = { body: { refreshToken: "refresh-valido" } };
+    const res = criarRes();
+    const novoPar = { token: "novo-access", refreshToken: "novo-refresh", usuario: { id: 1 } };
+
+    vi.spyOn(authService, "refresh").mockResolvedValueOnce(novoPar);
+
+    await authController.refresh(req, res);
+
+    expect(authService.refresh).toHaveBeenCalledWith("refresh-valido");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(novoPar);
+  });
+
+  it("retorna 401 quando o refresh token é inválido, vencido ou já usado", async () => {
+    const req = { body: { refreshToken: "refresh-invalido" } };
+    const res = criarRes();
+
+    vi.spyOn(authService, "refresh").mockRejectedValueOnce(
+      Object.assign(new Error("Sessão expirada. Faça login novamente."), { name: "RefreshTokenError" })
+    );
+
+    await authController.refresh(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Sessão expirada. Faça login novamente." });
+  });
+
+  it("retorna 403 quando o cadastro ainda não foi aprovado", async () => {
+    const req = { body: { refreshToken: "refresh-de-pendente" } };
+    const res = criarRes();
+
+    vi.spyOn(authService, "refresh").mockRejectedValueOnce(
+      Object.assign(new Error("Cadastro aguardando aprovação de um administrador"), {
+        name: "CadastroPendenteError",
+      })
+    );
+
+    await authController.refresh(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it("retorna 500 em erro inesperado", async () => {
+    const req = { body: { refreshToken: "refresh-qualquer" } };
+    const res = criarRes();
+
+    vi.spyOn(authService, "refresh").mockRejectedValueOnce(new Error("banco fora"));
+
+    await authController.refresh(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Erro ao renovar a sessão" });
   });
 });
