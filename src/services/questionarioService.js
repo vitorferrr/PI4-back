@@ -80,6 +80,19 @@ const validarRespostas = async (respostas, transaction) => {
   conferirFormatos(respostas, new Map(perguntas.map((pergunta) => [pergunta.id, pergunta])));
 };
 
+const includePergunta = {
+  model: PerguntaQuestionario,
+  as: "pergunta",
+  attributes: ["id", "texto", "tipo_resposta", "ordem"],
+};
+
+const listarDaVisita = async (visitaId) =>
+  await RespostaQuestionario.findAll({
+    where: { visita_id: visitaId },
+    include: [includePergunta],
+    order: [[includePergunta, "ordem", "ASC"]],
+  });
+
 const travarVisitaEditavel = async (visitaId, transaction) => {
   const visita = await Visita.findByPk(visitaId, {
     attributes: ["id", "status"],
@@ -142,24 +155,8 @@ const salvarRespostas = async (visitaId, respostas) => {
     throw erro;
   }
 
-  return await RespostaQuestionario.findAll({
-    where: { visita_id: visitaId },
-    order: [["pergunta_id", "ASC"]],
-  });
+  return await listarDaVisita(visitaId);
 };
-
-const includePergunta = {
-  model: PerguntaQuestionario,
-  as: "pergunta",
-  attributes: ["id", "texto", "tipo_resposta", "ordem"],
-};
-
-const listarDaVisita = async (visitaId) =>
-  await RespostaQuestionario.findAll({
-    where: { visita_id: visitaId },
-    include: [includePergunta],
-    order: [[includePergunta, "ordem", "ASC"]],
-  });
 
 const buscarDaVisita = async (visitaId, respostaId, transaction) =>
   await RespostaQuestionario.findOne({

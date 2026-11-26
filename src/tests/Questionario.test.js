@@ -182,8 +182,28 @@ describe("salvar respostas do questionário", () => {
     expect(transacao.rollback).not.toHaveBeenCalled();
     expect(RespostaQuestionario.findAll).toHaveBeenCalledWith({
       where: { visita_id: 10 },
-      order: [["pergunta_id", "ASC"]],
+      include: [
+        {
+          model: PerguntaQuestionario,
+          as: "pergunta",
+          attributes: ["id", "texto", "tipo_resposta", "ordem"],
+        },
+      ],
+      order: [
+        [
+          {
+            model: PerguntaQuestionario,
+            as: "pergunta",
+            attributes: ["id", "texto", "tipo_resposta", "ordem"],
+          },
+          "ordem",
+          "ASC",
+        ],
+      ],
     });
+    expect(RespostaQuestionario.findAll.mock.invocationCallOrder[0]).toBeGreaterThan(
+      transacao.commit.mock.invocationCallOrder[0]
+    );
     expect(resultado).toEqual([{ pergunta_id: 1 }]);
   });
 
