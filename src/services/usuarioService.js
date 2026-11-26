@@ -1,6 +1,9 @@
 import bcrypt from "bcrypt";
-import models from "../models/index.js";
+import models, { sequelize } from "../models/index.js";
+import AppError from "../utils/appError.js";
+import gerarSenha from "../utils/gerarSenha.js";
 import normalizarEmail from "../utils/normalizarEmail.js";
+import { enviarSenhaGerada } from "./emailService.js";
 
 const { Usuario } = models;
 
@@ -17,7 +20,7 @@ const erroValidacao = (mensagem) => {
   return erro;
 };
 
-const criar = async (dados) => {
+const criar = async (dados, { transaction } = {}) => {
   const { nome, senha, role, matricula, aprovado } = dados;
   const email = normalizarEmail(dados.email);
 
@@ -25,7 +28,7 @@ const criar = async (dados) => {
     throw erroValidacao("A senha é obrigatória");
   }
 
-   const existente = await Usuario.findOne({ where: { email } });
+   const existente = await Usuario.findOne({ where: { email }, transaction });
    if (existente) {
       const erro = erroValidacao("Email já cadastrado");
       erro.codigo = "EMAIL_CADASTRADO";
@@ -41,9 +44,36 @@ const criar = async (dados) => {
     role,
     matricula,
     ...(aprovado !== undefined && { aprovado }),
-  });
+  }, { transaction });
 
   return semSenha(usuario);
+};
+
+const criarComSenhaGerada = async (dados, autorId) => {
+  const senha = gerarSenha();
+  const autor = autorId ? await Usuario.findByPk(autorId, { attributes: ["nome"] }) : null;
+
+  return await sequelize.transaction(async (transaction) => {
+    const usuario = await criar({ ...dados, senha }, { transaction });
+
+    try {
+      await enviarSenhaGerada({
+        para: usuario.email,
+        nome: usuario.nome,
+        quemCadastrou: autor?.nome,
+        role: usuario.role,
+        senha,
+      });
+    } catch (erro) {
+      if (erro.name !== "EmailError") throw erro;
+      throw new AppError(
+        "Não foi possível enviar o e-mail com a senha. O usuário não foi cadastrado; tente novamente.",
+        503
+      );
+    }
+
+    return usuario;
+  });
 };
 
 const listar = async ({ aprovado } = {}) => {
@@ -139,6 +169,7 @@ const remover = async (id) => {
 
 export default {
   criar,
+  criarComSenhaGerada,
   listar,
   buscarPorId,
   atualizar,
