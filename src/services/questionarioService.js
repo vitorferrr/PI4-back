@@ -77,35 +77,45 @@ const validarRespostas = async (respostas, transaction) => {
   }
 };
 
+const travarVisitaEditavel = async (visitaId, transaction) => {
+  const visita = await Visita.findByPk(visitaId, {
+    attributes: ["id", "status"],
+    transaction,
+    lock: transaction.LOCK.UPDATE,
+  });
+
+  if (!visita) {
+    return null;
+  }
+
+  if (visita.status !== "em_andamento") {
+    throw erroValidacao("Só é possível responder o questionário de visitas em andamento");
+  }
+
+  const documento = await Documento.findOne({
+    attributes: ["id"],
+    where: { visita_id: visitaId },
+    transaction,
+  });
+
+  if (documento) {
+    throw erroValidacao(
+      "O documento da visita já foi gerado; as respostas não podem mais ser alteradas"
+    );
+  }
+
+  return visita;
+};
+
 const salvarRespostas = async (visitaId, respostas) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const visita = await Visita.findByPk(visitaId, {
-      attributes: ["id", "status"],
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
+    const visita = await travarVisitaEditavel(visitaId, transaction);
 
     if (!visita) {
       await transaction.rollback();
       return null;
-    }
-
-    if (visita.status !== "em_andamento") {
-      throw erroValidacao("Só é possível responder o questionário de visitas em andamento");
-    }
-
-    const documento = await Documento.findOne({
-      attributes: ["id"],
-      where: { visita_id: visitaId },
-      transaction,
-    });
-
-    if (documento) {
-      throw erroValidacao(
-        "O documento da visita já foi gerado; as respostas não podem mais ser alteradas"
-      );
     }
 
     await validarRespostas(respostas, transaction);
@@ -135,7 +145,78 @@ const salvarRespostas = async (visitaId, respostas) => {
   });
 };
 
+const includePergunta = {
+  model: PerguntaQuestionario,
+  as: "pergunta",
+  attributes: ["id", "texto", "tipo_resposta", "ordem"],
+};
+
+const listarDaVisita = async (visitaId) =>
+  await RespostaQuestionario.findAll({
+    where: { visita_id: visitaId },
+    include: [includePergunta],
+    order: [[includePergunta, "ordem", "ASC"]],
+  });
+
+const buscarDaVisita = async (visitaId, respostaId, transaction) =>
+  await RespostaQuestionario.findOne({
+    where: { id: respostaId, visita_id: visitaId },
+    include: [includePergunta],
+    transaction,
+  });
+
+const alterarDaVisita = async (visitaId, respostaId, alteracao) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const visita = await travarVisitaEditavel(visitaId, transaction);
+    const resposta = visita && (await buscarDaVisita(visitaId, respostaId, transaction));
+
+    if (!resposta) {
+      await transaction.rollback();
+      return null;
+    }
+
+    const resultado = await alteracao(resposta, transaction);
+    await transaction.commit();
+
+    return resultado;
+  } catch (erro) {
+    await transaction.rollback();
+    throw erro;
+  }
+};
+
+const atualizarDaVisita = async (visitaId, respostaId, valor) => {
+  if (typeof valor !== "string" || valor.trim() === "") {
+    throw erroValidacao("A resposta deve ser um texto preenchido");
+  }
+
+  return await alterarDaVisita(visitaId, respostaId, async (resposta, transaction) => {
+    const formato = FORMATOS[resposta.pergunta.tipo_resposta];
+
+    if (!formato.valido(valor.trim())) {
+      throw erroValidacao(`Resposta da pergunta ${resposta.pergunta_id} ${formato.mensagem}`);
+    }
+
+    await resposta.update({ resposta: valor.trim() }, { transaction });
+
+    return resposta;
+  });
+};
+
+const removerDaVisita = async (visitaId, respostaId) =>
+  await alterarDaVisita(visitaId, respostaId, async (resposta, transaction) => {
+    await resposta.destroy({ transaction });
+
+    return true;
+  });
+
 export default {
   listar,
   salvarRespostas,
+  listarDaVisita,
+  buscarDaVisita,
+  atualizarDaVisita,
+  removerDaVisita,
 };
