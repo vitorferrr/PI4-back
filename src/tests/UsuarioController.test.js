@@ -199,8 +199,8 @@ describe("GET /usuarios (respostas do controller)", () => {
 
       expect(resposta.status).toBe(400);
       expect(await resposta.json()).toEqual({
-        mensagem: "Dados inválidos",
-        erros: ["aprovado deve ser true ou false"],
+        mensagem: "aprovado deve ser true ou false",
+        erros: ["aprovado: aprovado deve ser true ou false"],
       });
       expect(usuarioService.listar).not.toHaveBeenCalled();
     }

@@ -1,15 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import validate from "../middlewares/validate.js";
+import errorHandler from "../middlewares/errorHandler.js";
 import {
-  validarAtualizacaoResposta,
-  validarAtualizacaoUsuario,
-  validarAtualizacaoVisita,
-  validarCriacaoUsuario,
-  validarCriacaoVisita,
-  validarListagemUsuarios,
-  validarListagemVisitas,
-  validarObservacoesVisita,
-  validarRespostasQuestionario,
-} from "../middlewares/validationMiddleware.js";
+  atualizarRespostaSchema,
+  atualizarUsuarioSchema,
+  atualizarVisitaSchema,
+  criarUsuarioSchema,
+  criarVisitaSchema,
+  listarUsuariosSchema,
+  listarVisitasSchema,
+  observacoesVisitaSchema,
+  salvarRespostasSchema,
+} from "../middlewares/validationSchemas.js";
+
+// Roda o validate(schema) de verdade e, se ele recusar, passa o erro pelo
+// errorHandler, como acontece numa rota do Express.
+const comoMiddleware = (schema) => async (req, res, next) => {
+  await validate(schema)(req, res, (erro) =>
+    erro ? errorHandler(erro, req, res, next) : next()
+  );
+};
+
+const validarCriacaoUsuario = comoMiddleware(criarUsuarioSchema);
+const validarAtualizacaoUsuario = comoMiddleware(atualizarUsuarioSchema);
+const validarListagemUsuarios = comoMiddleware(listarUsuariosSchema);
+const validarCriacaoVisita = comoMiddleware(criarVisitaSchema);
+const validarAtualizacaoVisita = comoMiddleware(atualizarVisitaSchema);
+const validarListagemVisitas = comoMiddleware(listarVisitasSchema);
+const validarAtualizacaoResposta = comoMiddleware(atualizarRespostaSchema);
+const validarRespostasQuestionario = comoMiddleware(salvarRespostasSchema);
+const validarObservacoesVisita = comoMiddleware(observacoesVisitaSchema);
 
 const criarRes = () => {
   const res = {};
@@ -23,11 +43,11 @@ beforeEach(() => {
 });
 
 describe("validarCriacaoUsuario", () => {
-  it("chama next() quando todos os campos obrigatórios são válidos", () => {
+  it("chama next() quando todos os campos obrigatórios são válidos", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarCriacaoUsuario(
+    await validarCriacaoUsuario(
       {
         body: {
           nome: "Ana",
@@ -44,11 +64,11 @@ describe("validarCriacaoUsuario", () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it("retorna 400 com lista de erros quando faltam campos ou são inválidos", () => {
+  it("retorna 400 com lista de erros quando faltam campos ou são inválidos", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarCriacaoUsuario(
+    await validarCriacaoUsuario(
       {
         body: {
           nome: "",
@@ -64,53 +84,54 @@ describe("validarCriacaoUsuario", () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
-      mensagem: "Dados inválidos",
+      mensagem:
+        "O campo nome é obrigatório; Informe um email válido; A senha deve ter ao menos 6 caracteres; Perfil (role) inválido",
       erros: [
-        "O campo nome é obrigatório",
-        "Informe um email válido",
-        "A senha deve ter ao menos 6 caracteres",
-        "Perfil (role) inválido",
+        "nome: O campo nome é obrigatório",
+        "email: Informe um email válido",
+        "senha: A senha deve ter ao menos 6 caracteres",
+        "role: Perfil (role) inválido",
       ],
     });
   });
 });
 
 describe("validarAtualizacaoUsuario", () => {
-  it("rejeita corpo vazio", () => {
+  it("rejeita corpo vazio", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarAtualizacaoUsuario({ body: {} }, res, next);
+    await validarAtualizacaoUsuario({ body: {} }, res, next);
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
-  it("permite atualização parcial válida", () => {
+  it("permite atualização parcial válida", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarAtualizacaoUsuario({ body: { nome: "Maria" } }, res, next);
+    await validarAtualizacaoUsuario({ body: { nome: "Maria" } }, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it("rejeita email inválido na atualização", () => {
+  it("rejeita email inválido na atualização", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarAtualizacaoUsuario({ body: { email: "errado" } }, res, next);
+    await validarAtualizacaoUsuario({ body: { email: "errado" } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(400);
   });
 });
 
 describe("validarCriacaoVisita", () => {
-  it("chama next() para visita válida", () => {
+  it("chama next() para visita válida", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarCriacaoVisita(
+    await validarCriacaoVisita(
       {
         body: {
           denunciado: "Loja Central",
@@ -126,11 +147,11 @@ describe("validarCriacaoVisita", () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it("retorna 400 para dados inválidos na criação de visita", () => {
+  it("retorna 400 para dados inválidos na criação de visita", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarCriacaoVisita(
+    await validarCriacaoVisita(
       {
         body: {
           denunciado: "   ",
@@ -149,12 +170,12 @@ describe("validarCriacaoVisita", () => {
     expect(res.json.mock.calls[0][0].erros).toHaveLength(5);
   });
 
-  it("rejeita datas soltas ou inexistentes no calendário como '1', '2024' ou '2024-02-30'", () => {
+  it("rejeita datas soltas ou inexistentes no calendário como '1', '2024' ou '2024-02-30'", async () => {
     for (const dataInvalida of ["1", "2024", "2024-02-30", "2023-02-29"]) {
       const res = criarRes();
       const next = vi.fn();
 
-      validarCriacaoVisita(
+      await validarCriacaoVisita(
         { body: { denunciado: "Loja Central", data_agendada: dataInvalida } },
         res,
         next
@@ -167,21 +188,21 @@ describe("validarCriacaoVisita", () => {
 });
 
 describe("validarAtualizacaoResposta", () => {
-  it("aceita resposta preenchida", () => {
+  it("aceita resposta preenchida", async () => {
     const next = vi.fn();
 
-    validarAtualizacaoResposta({ body: { resposta: "Sim" } }, criarRes(), next);
+    await validarAtualizacaoResposta({ body: { resposta: "Sim" } }, criarRes(), next);
 
     expect(next).toHaveBeenCalledTimes(1);
   });
 
   it.each([[{}], [{ resposta: "" }], [{ resposta: 1 }], [null], [["Sim"]]])(
     "rejeita corpo %j",
-    (body) => {
+    async (body) => {
       const res = criarRes();
       const next = vi.fn();
 
-      validarAtualizacaoResposta({ body }, res, next);
+      await validarAtualizacaoResposta({ body }, res, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(next).not.toHaveBeenCalled();
@@ -190,19 +211,19 @@ describe("validarAtualizacaoResposta", () => {
 });
 
 describe("validarListagemUsuarios", () => {
-  it.each([{}, { aprovado: "true" }, { aprovado: "false" }])("aceita %o", (query) => {
+  it.each([{}, { aprovado: "true" }, { aprovado: "false" }])("aceita %o", async (query) => {
     const next = vi.fn();
 
-    validarListagemUsuarios({ query }, criarRes(), next);
+    await validarListagemUsuarios({ query }, criarRes(), next);
 
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it.each([["sim"], ["1"], [["true", "false"]]])("rejeita aprovado = %o", (aprovado) => {
+  it.each([["sim"], ["1"], [["true", "false"]]])("rejeita aprovado = %o", async (aprovado) => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarListagemUsuarios({ query: { aprovado } }, res, next);
+    await validarListagemUsuarios({ query: { aprovado } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(next).not.toHaveBeenCalled();
@@ -210,9 +231,9 @@ describe("validarListagemUsuarios", () => {
 });
 
 describe("validarListagemVisitas", () => {
-  it("permite query vazia ou filtros válidos", () => {
+  it("permite query vazia ou filtros válidos", async () => {
     const next = vi.fn();
-    validarListagemVisitas(
+    await validarListagemVisitas(
       { query: { status: "agendada", gestor_id: "1", fiscalizador_id: "2" } },
       criarRes(),
       next
@@ -220,11 +241,11 @@ describe("validarListagemVisitas", () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it("rejeita status ou ids inválidos na query", () => {
+  it("rejeita status ou ids inválidos na query", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarListagemVisitas(
+    await validarListagemVisitas(
       {
         query: {
           status: "inexistente",
@@ -244,9 +265,9 @@ describe("validarListagemVisitas", () => {
 });
 
 describe("validarRespostasQuestionario", () => {
-  it("chama next() para lista válida de respostas", () => {
+  it("chama next() para lista válida de respostas", async () => {
     const next = vi.fn();
-    validarRespostasQuestionario(
+    await validarRespostasQuestionario(
       {
         body: {
           respostas: [
@@ -261,13 +282,13 @@ describe("validarRespostasQuestionario", () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it("rejeita lista vazia, pergunta duplicada ou resposta vazia", () => {
+  it("rejeita lista vazia, pergunta duplicada ou resposta vazia", async () => {
     const res1 = criarRes();
-    validarRespostasQuestionario({ body: { respostas: [] } }, res1, vi.fn());
+    await validarRespostasQuestionario({ body: { respostas: [] } }, res1, vi.fn());
     expect(res1.status).toHaveBeenCalledWith(400);
 
     const res2 = criarRes();
-    validarRespostasQuestionario(
+    await validarRespostasQuestionario(
       {
         body: {
           respostas: [
@@ -284,28 +305,28 @@ describe("validarRespostasQuestionario", () => {
 });
 
 describe("validarObservacoesVisita", () => {
-  it("aceita texto, texto vazio e null", () => {
+  it("aceita texto, texto vazio e null", async () => {
     for (const observacoes_livres of ["Produtos vencidos", "", null, "a".repeat(5000)]) {
       const res = criarRes();
       const next = vi.fn();
 
-      validarObservacoesVisita({ body: { observacoes_livres } }, res, next);
+      await validarObservacoesVisita({ body: { observacoes_livres } }, res, next);
 
       expect(next).toHaveBeenCalledTimes(1);
       expect(res.status).not.toHaveBeenCalled();
     }
   });
 
-  it("conta o limite sem os espaços das pontas", () => {
+  it("conta o limite sem os espaços das pontas", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarObservacoesVisita({ body: { observacoes_livres: `  ${"a".repeat(5000)}  ` } }, res, next);
+    await validarObservacoesVisita({ body: { observacoes_livres: `  ${"a".repeat(5000)}  ` } }, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it("rejeita campo ausente, tipo errado ou texto longo demais", () => {
+  it("rejeita campo ausente, tipo errado ou texto longo demais", async () => {
     const casos = [
       [{}, "observacoes_livres deve ser um texto ou null"],
       [{ observacoes_livres: 10 }, "observacoes_livres deve ser um texto ou null"],
@@ -317,19 +338,19 @@ describe("validarObservacoesVisita", () => {
       const res = criarRes();
       const next = vi.fn();
 
-      validarObservacoesVisita({ body }, res, next);
+      await validarObservacoesVisita({ body }, res, next);
 
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json.mock.calls[0][0].erros).toContain(mensagem);
+      expect(res.json.mock.calls[0][0].mensagem).toBe(mensagem);
     }
   });
 
-  it("rejeita corpo que não é objeto", () => {
+  it("rejeita corpo que não é objeto", async () => {
     const res = criarRes();
     const next = vi.fn();
 
-    validarObservacoesVisita({ body: "texto" }, res, next);
+    await validarObservacoesVisita({ body: "texto" }, res, next);
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
@@ -337,9 +358,9 @@ describe("validarObservacoesVisita", () => {
 });
 
 describe("validarAtualizacaoVisita", () => {
-  it("permite atualização parcial válida e cancelamento", () => {
+  it("permite atualização parcial válida e cancelamento", async () => {
     const next = vi.fn();
-    validarAtualizacaoVisita(
+    await validarAtualizacaoVisita(
       { body: { denunciado: "Novo Local", status: "cancelada" } },
       criarRes(),
       next
@@ -347,13 +368,13 @@ describe("validarAtualizacaoVisita", () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it("rejeita corpo vazio, data inválida ou status diferente de 'cancelada'", () => {
+  it("rejeita corpo vazio, data inválida ou status diferente de 'cancelada'", async () => {
     const res1 = criarRes();
-    validarAtualizacaoVisita({ body: {} }, res1, vi.fn());
+    await validarAtualizacaoVisita({ body: {} }, res1, vi.fn());
     expect(res1.status).toHaveBeenCalledWith(400);
 
     const res2 = criarRes();
-    validarAtualizacaoVisita(
+    await validarAtualizacaoVisita(
       { body: { data_agendada: "amanhã", status: "concluida" } },
       res2,
       vi.fn()

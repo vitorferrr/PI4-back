@@ -332,16 +332,19 @@ describe("respostas da visita por URL composta", () => {
       expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
     });
 
+    const MENSAGEM_RESPOSTA = "A resposta deve ser um texto preenchido";
+    const MENSAGEM_CORPO = "O corpo da requisição deve ser um objeto JSON";
+
     it.each([
-      [{}, ["A resposta deve ser um texto preenchido"]],
-      [{ resposta: "   " }, ["A resposta deve ser um texto preenchido"]],
-      [{ resposta: 5 }, ["A resposta deve ser um texto preenchido"]],
-      [[{ resposta: "Sim" }], ["O corpo da requisição deve ser um objeto JSON"]],
-    ])("responde 400 no mesmo padrão do POST para corpo %j", async (corpo, erros) => {
+      [{}, MENSAGEM_RESPOSTA, [`resposta: ${MENSAGEM_RESPOSTA}`]],
+      [{ resposta: "   " }, MENSAGEM_RESPOSTA, [`resposta: ${MENSAGEM_RESPOSTA}`]],
+      [{ resposta: 5 }, MENSAGEM_RESPOSTA, [`resposta: ${MENSAGEM_RESPOSTA}`]],
+      [[{ resposta: "Sim" }], MENSAGEM_CORPO, [MENSAGEM_CORPO]],
+    ])("responde 400 no mesmo padrão do POST para corpo %j", async (corpo, mensagem, erros) => {
       const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 5, corpo);
 
       expect(resposta.status).toBe(400);
-      expect(await resposta.json()).toEqual({ mensagem: "Dados inválidos", erros });
+      expect(await resposta.json()).toEqual({ mensagem, erros });
       expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
       expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
     });

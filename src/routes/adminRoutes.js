@@ -2,7 +2,8 @@ import { Router } from "express";
 import adminController from "../controllers/adminController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
-import { validarListagemVisitas } from "../middlewares/validationMiddleware.js";
+import validate from "../middlewares/validate.js";
+import { listarVisitasSchema } from "../middlewares/validationSchemas.js";
 
 const router = Router();
 
@@ -17,7 +18,7 @@ router.get(
   "/exportar",
   autenticar,
   autorizar("admin"),
-  validarListagemVisitas,
+  validate(listarVisitasSchema),
   adminController.exportar
 );
 
