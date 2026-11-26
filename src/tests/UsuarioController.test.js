@@ -208,6 +208,21 @@ describe("POST /usuarios/:id/reenviar-senha (respostas do controller)", () => {
     expect(resposta.status).toBe(503);
   });
 
+  it("responde 400 quando o cadastro não está aprovado", async () => {
+    usuarioService.reenviarSenha.mockRejectedValue(
+      Object.assign(new Error("Este cadastro não está aprovado. Aprove o usuário antes de reenviar a senha."), {
+        name: "ValidacaoError",
+      })
+    );
+
+    const resposta = await requisitar("POST", "/7/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Este cadastro não está aprovado. Aprove o usuário antes de reenviar a senha.",
+    });
+  });
+
   it("responde 400 para id inválido sem chamar o service", async () => {
     const resposta = await requisitar("POST", "/abc/reenviar-senha", "admin");
 

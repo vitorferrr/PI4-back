@@ -103,6 +103,10 @@ const reenviarSenha = async (id, autorId) =>
         return null;
       }
 
+      if (usuario.aprovado === false) {
+        throw erroValidacao("Este cadastro não está aprovado. Aprove o usuário antes de reenviar a senha.");
+      }
+
       await usuario.update({ senha_hash: await bcrypt.hash(senha, 10) }, { transaction });
 
       return semSenha(usuario);

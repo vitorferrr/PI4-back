@@ -128,6 +128,19 @@ describe("reenvio de senha", () => {
     expect(resultado).toEqual({ id: 7, nome: "Carla Mendes", email: "carla@exemplo.com", role: "gestor" });
   });
 
+  it("recusa cadastro não aprovado sem trocar a senha nem enviar e-mail", async () => {
+    const usuario = existente();
+    usuario.aprovado = false;
+    Usuario.findByPk.mockImplementation(async (id) => (id === 1 ? { nome: "Helena Matos" } : usuario));
+
+    await expect(usuarioService.reenviarSenha(7, 1)).rejects.toMatchObject({
+      name: "ValidacaoError",
+      message: "Este cadastro não está aprovado. Aprove o usuário antes de reenviar a senha.",
+    });
+    expect(usuario.update).not.toHaveBeenCalled();
+    expect(enviarSenhaGerada).not.toHaveBeenCalled();
+  });
+
   it("devolve null sem enviar e-mail quando o usuário não existe", async () => {
     Usuario.findByPk.mockImplementation(async (id) => (id === 1 ? { nome: "Helena Matos" } : null));
 
