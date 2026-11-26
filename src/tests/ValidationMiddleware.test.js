@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  validarAtualizacaoResposta,
   validarAtualizacaoUsuario,
   validarCriacaoUsuario,
   validarCriacaoVisita,
@@ -161,6 +162,29 @@ describe("validarCriacaoVisita", () => {
       expect(res.status).toHaveBeenCalledWith(400);
     }
   });
+});
+
+describe("validarAtualizacaoResposta", () => {
+  it("aceita resposta preenchida", () => {
+    const next = vi.fn();
+
+    validarAtualizacaoResposta({ body: { resposta: "Sim" } }, criarRes(), next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([[{}], [{ resposta: "" }], [{ resposta: 1 }], [null], [["Sim"]]])(
+    "rejeita corpo %j",
+    (body) => {
+      const res = criarRes();
+      const next = vi.fn();
+
+      validarAtualizacaoResposta({ body }, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(next).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("validarListagemUsuarios", () => {

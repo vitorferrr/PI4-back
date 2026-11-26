@@ -4,8 +4,9 @@ import questionarioController from "../controllers/questionarioController.js";
 import documentoController from "../controllers/documentoController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
-import validarId from "../middlewares/validarIdMiddleware.js";
+import validarId, { validarIdParametro } from "../middlewares/validarIdMiddleware.js";
 import {
+  validarAtualizacaoResposta,
   validarCriacaoVisita,
   validarListagemVisitas,
   validarRespostasQuestionario,
@@ -60,6 +61,42 @@ router.post(
   validarId,
   validarRespostasQuestionario,
   questionarioController.salvarRespostas
+);
+
+router.get(
+  "/:id/respostas",
+  autenticar,
+  autorizar("admin", "gestor", "fiscalizador"),
+  validarId,
+  questionarioController.listarRespostas
+);
+
+router.get(
+  "/:id/respostas/:respostaId",
+  autenticar,
+  autorizar("admin", "gestor", "fiscalizador"),
+  validarId,
+  validarIdParametro("respostaId"),
+  questionarioController.buscarResposta
+);
+
+router.put(
+  "/:id/respostas/:respostaId",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  validarIdParametro("respostaId"),
+  validarAtualizacaoResposta,
+  questionarioController.atualizarResposta
+);
+
+router.delete(
+  "/:id/respostas/:respostaId",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  validarIdParametro("respostaId"),
+  questionarioController.removerResposta
 );
 
 router.post(

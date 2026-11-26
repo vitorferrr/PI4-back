@@ -17,6 +17,10 @@ vi.mock("../services/questionarioService.js", () => ({
   default: {
     listar: vi.fn(),
     salvarRespostas: vi.fn(),
+    listarDaVisita: vi.fn(),
+    buscarDaVisita: vi.fn(),
+    atualizarDaVisita: vi.fn(),
+    removerDaVisita: vi.fn(),
   },
 }));
 
@@ -162,6 +166,195 @@ describe("POST /visitas/:id/respostas", () => {
     });
 
     expect(resposta.status).toBe(500);
+    consoleError.mockRestore();
+  });
+});
+describe("respostas da visita por URL composta", () => {
+  const respostaSalva = { id: 3, visita_id: 10, pergunta_id: 2, resposta: "Sim" };
+
+  beforeEach(() => {
+    visitaService.buscarParaAcesso.mockResolvedValue(visitaDoFiscalizador5);
+    questionarioService.listarDaVisita.mockResolvedValue([respostaSalva]);
+    questionarioService.buscarDaVisita.mockResolvedValue(respostaSalva);
+    questionarioService.atualizarDaVisita.mockResolvedValue({ ...respostaSalva, resposta: "Não" });
+    questionarioService.removerDaVisita.mockResolvedValue(true);
+  });
+
+  describe("GET /visitas/:id/respostas", () => {
+    it.each([
+      ["admin", 1],
+      ["gestor", 1],
+      ["fiscalizador", 5],
+    ])("lista para %s", async (role, id) => {
+      const resposta = await requisitar("GET", "/visitas/10/respostas", role, id);
+
+      expect(resposta.status).toBe(200);
+      expect(await resposta.json()).toEqual([respostaSalva]);
+      expect(questionarioService.listarDaVisita).toHaveBeenCalledWith(10);
+    });
+
+    it("responde 404 para fiscal de outra visita", async () => {
+      const resposta = await requisitar("GET", "/visitas/10/respostas", "fiscalizador", 6);
+
+      expect(resposta.status).toBe(404);
+      expect(await resposta.json()).toEqual({ mensagem: "Visita não encontrada" });
+      expect(questionarioService.listarDaVisita).not.toHaveBeenCalled();
+    });
+
+    it("responde 404 quando a visita não existe", async () => {
+      visitaService.buscarParaAcesso.mockResolvedValue(null);
+
+      expect((await requisitar("GET", "/visitas/99/respostas", "admin", 1)).status).toBe(404);
+    });
+  });
+
+  describe("GET /visitas/:id/respostas/:respostaId", () => {
+    it("devolve a resposta da visita", async () => {
+      const resposta = await requisitar("GET", "/visitas/10/respostas/3", "gestor", 1);
+
+      expect(resposta.status).toBe(200);
+      expect(await resposta.json()).toEqual(respostaSalva);
+      expect(questionarioService.buscarDaVisita).toHaveBeenCalledWith(10, 3);
+    });
+
+    it("responde 404 quando a resposta não é da visita", async () => {
+      questionarioService.buscarDaVisita.mockResolvedValue(null);
+
+      const resposta = await requisitar("GET", "/visitas/10/respostas/30", "gestor", 1);
+
+      expect(resposta.status).toBe(404);
+      expect(await resposta.json()).toEqual({ mensagem: "Resposta não encontrada" });
+    });
+
+    it("responde 404 para fiscal de outra visita", async () => {
+      expect((await requisitar("GET", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(404);
+      expect(questionarioService.buscarDaVisita).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("PUT /visitas/:id/respostas/:respostaId", () => {
+    it("atualiza a resposta do fiscal da visita", async () => {
+      const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 5, {
+        resposta: "Não",
+      });
+
+      expect(resposta.status).toBe(200);
+      expect((await resposta.json()).resposta).toBe("Não");
+      expect(questionarioService.atualizarDaVisita).toHaveBeenCalledWith(10, 3, "Não");
+    });
+
+    it("responde 404 para fiscal de outra visita", async () => {
+      const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 6, {
+        resposta: "Não",
+      });
+
+      expect(resposta.status).toBe(404);
+      expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{}, ["A resposta deve ser um texto preenchido"]],
+      [{ resposta: "   " }, ["A resposta deve ser um texto preenchido"]],
+      [{ resposta: 5 }, ["A resposta deve ser um texto preenchido"]],
+      [[{ resposta: "Sim" }], ["O corpo da requisição deve ser um objeto JSON"]],
+    ])("responde 400 no mesmo padrão do POST para corpo %j", async (corpo, erros) => {
+      const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 5, corpo);
+
+      expect(resposta.status).toBe(400);
+      expect(await resposta.json()).toEqual({ mensagem: "Dados inválidos", erros });
+      expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
+      expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
+    });
+
+    it("responde 404 quando a resposta não é da visita", async () => {
+      questionarioService.atualizarDaVisita.mockResolvedValue(null);
+
+      const resposta = await requisitar("PUT", "/visitas/10/respostas/30", "fiscalizador", 5, {
+        resposta: "Não",
+      });
+
+      expect(resposta.status).toBe(404);
+      expect(await resposta.json()).toEqual({ mensagem: "Resposta não encontrada" });
+    });
+
+    it("responde 400 com a mensagem da validação", async () => {
+      questionarioService.atualizarDaVisita.mockRejectedValue(
+        Object.assign(
+          new Error("O documento da visita já foi gerado; as respostas não podem mais ser alteradas"),
+          { name: "ValidacaoError" }
+        )
+      );
+
+      const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 5, {
+        resposta: "Não",
+      });
+
+      expect(resposta.status).toBe(400);
+      expect(await resposta.json()).toEqual({
+        mensagem: "Erro ao atualizar resposta",
+        erros: ["O documento da visita já foi gerado; as respostas não podem mais ser alteradas"],
+      });
+    });
+  });
+
+  describe("DELETE /visitas/:id/respostas/:respostaId", () => {
+    it("apaga a resposta e responde 204", async () => {
+      const resposta = await requisitar("DELETE", "/visitas/10/respostas/3", "fiscalizador", 5);
+
+      expect(resposta.status).toBe(204);
+      expect(questionarioService.removerDaVisita).toHaveBeenCalledWith(10, 3);
+    });
+
+    it("responde 404 quando a resposta não é da visita", async () => {
+      questionarioService.removerDaVisita.mockResolvedValue(null);
+
+      expect((await requisitar("DELETE", "/visitas/10/respostas/30", "fiscalizador", 5)).status).toBe(404);
+    });
+
+    it("responde 404 para fiscal de outra visita", async () => {
+      expect((await requisitar("DELETE", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(404);
+      expect(questionarioService.removerDaVisita).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    ["PUT", "gestor"],
+    ["PUT", "admin"],
+    ["DELETE", "gestor"],
+    ["DELETE", "admin"],
+  ])("%s responde 403 para %s", async (metodo, role) => {
+    const resposta = await requisitar(metodo, "/visitas/10/respostas/3", role, 1, { resposta: "Não" });
+
+    expect(resposta.status).toBe(403);
+    expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["GET", "/visitas/abc/respostas/3"],
+    ["GET", "/visitas/10/respostas/abc"],
+    ["PUT", "/visitas/10/respostas/0"],
+    ["DELETE", "/visitas/10/respostas/99999999999"],
+  ])("%s %s responde 400 para id inválido", async (metodo, caminho) => {
+    const corpo = metodo === "GET" ? undefined : { resposta: "Não" };
+    const resposta = await requisitar(metodo, caminho, "fiscalizador", 5, corpo);
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({ mensagem: "Id inválido" });
+    expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
+  });
+
+  it("responde 401 sem token", async () => {
+    expect((await fetch(`${urlBase}/visitas/10/respostas`)).status).toBe(401);
+  });
+
+  it("responde 500 quando o service falha", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    questionarioService.listarDaVisita.mockRejectedValue(new Error("falha no banco"));
+
+    const resposta = await requisitar("GET", "/visitas/10/respostas", "admin", 1);
+
+    expect(resposta.status).toBe(500);
+    expect(await resposta.json()).toEqual({ mensagem: "Erro ao listar respostas" });
     consoleError.mockRestore();
   });
 });
