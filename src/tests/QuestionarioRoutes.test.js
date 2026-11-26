@@ -102,14 +102,14 @@ describe("POST /visitas/:id/respostas", () => {
     expect(await resposta.json()).toEqual([{ id: 1, pergunta_id: 1 }]);
   });
 
-  it("responde 404 para fiscalizador não associado, sem salvar", async () => {
+  it("responde 403 para fiscalizador não associado, sem salvar", async () => {
     visitaService.buscarParaAcesso.mockResolvedValue(visitaDoFiscalizador5);
 
     const resposta = await requisitar("POST", "/visitas/10/respostas", "fiscalizador", 6, {
       respostas,
     });
 
-    expect(resposta.status).toBe(404);
+    expect(resposta.status).toBe(403);
     expect(questionarioService.salvarRespostas).not.toHaveBeenCalled();
   });
 
@@ -273,11 +273,13 @@ describe("respostas da visita por URL composta", () => {
       expect(questionarioService.listarDaVisita).toHaveBeenCalledWith(10);
     });
 
-    it("responde 404 para fiscal de outra visita", async () => {
+    it("responde 403 para fiscal de outra visita", async () => {
       const resposta = await requisitar("GET", "/visitas/10/respostas", "fiscalizador", 6);
 
-      expect(resposta.status).toBe(404);
-      expect(await resposta.json()).toEqual({ mensagem: "Visita não encontrada" });
+      expect(resposta.status).toBe(403);
+      expect(await resposta.json()).toEqual({
+        mensagem: "Você não tem permissão para acessar esta visita.",
+      });
       expect(questionarioService.listarDaVisita).not.toHaveBeenCalled();
     });
 
@@ -306,8 +308,8 @@ describe("respostas da visita por URL composta", () => {
       expect(await resposta.json()).toEqual({ mensagem: "Resposta não encontrada" });
     });
 
-    it("responde 404 para fiscal de outra visita", async () => {
-      expect((await requisitar("GET", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(404);
+    it("responde 403 para fiscal de outra visita", async () => {
+      expect((await requisitar("GET", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(403);
       expect(questionarioService.buscarDaVisita).not.toHaveBeenCalled();
     });
   });
@@ -323,12 +325,12 @@ describe("respostas da visita por URL composta", () => {
       expect(questionarioService.atualizarDaVisita).toHaveBeenCalledWith(10, 3, "Não");
     });
 
-    it("responde 404 para fiscal de outra visita", async () => {
+    it("responde 403 para fiscal de outra visita", async () => {
       const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 6, {
         resposta: "Não",
       });
 
-      expect(resposta.status).toBe(404);
+      expect(resposta.status).toBe(403);
       expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
     });
 
@@ -393,8 +395,8 @@ describe("respostas da visita por URL composta", () => {
       expect((await requisitar("DELETE", "/visitas/10/respostas/30", "fiscalizador", 5)).status).toBe(404);
     });
 
-    it("responde 404 para fiscal de outra visita", async () => {
-      expect((await requisitar("DELETE", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(404);
+    it("responde 403 para fiscal de outra visita", async () => {
+      expect((await requisitar("DELETE", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(403);
       expect(questionarioService.removerDaVisita).not.toHaveBeenCalled();
     });
   });
