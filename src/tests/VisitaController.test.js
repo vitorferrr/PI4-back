@@ -10,8 +10,10 @@ vi.mock("../services/visitaService.js", () => ({
     criar: vi.fn(),
     listar: vi.fn(),
     buscarPorId: vi.fn(),
+    buscarParaAcesso: vi.fn(),
     iniciar: vi.fn(),
     concluir: vi.fn(),
+    salvarObservacoes: vi.fn(),
   },
 }));
 
@@ -420,5 +422,106 @@ describe("erros inesperados", () => {
     expect(resposta.status).toBe(500);
     expect(await resposta.json()).toEqual({ mensagem: "Erro ao buscar visita" });
     consoleError.mockRestore();
+  });
+});
+
+describe("PATCH /visitas/:id/observacoes", () => {
+  const visitaParaAcesso = { id: 10, status: "em_andamento", fiscalizadores: [{ id: 5 }] };
+
+  it("salva as observações para o fiscalizador da visita e devolve a visita", async () => {
+    visitaService.buscarParaAcesso.mockResolvedValue(visitaParaAcesso);
+    visitaService.salvarObservacoes.mockResolvedValue({ id: 10, observacoes_livres: "Texto" });
+
+    const resposta = await requisitar("PATCH", "/10/observacoes", "fiscalizador", 5, {
+      observacoes_livres: "Texto",
+    });
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual({ id: 10, observacoes_livres: "Texto" });
+    expect(visitaService.salvarObservacoes).toHaveBeenCalledWith(10, "Texto");
+  });
+
+  it("aceita null para apagar as observações", async () => {
+    visitaService.buscarParaAcesso.mockResolvedValue(visitaParaAcesso);
+    visitaService.salvarObservacoes.mockResolvedValue({ id: 10, observacoes_livres: null });
+
+    const resposta = await requisitar("PATCH", "/10/observacoes", "fiscalizador", 5, {
+      observacoes_livres: null,
+    });
+
+    expect(resposta.status).toBe(200);
+    expect(visitaService.salvarObservacoes).toHaveBeenCalledWith(10, null);
+  });
+
+  it("responde 404 para fiscalizador que não é da visita, sem gravar", async () => {
+    visitaService.buscarParaAcesso.mockResolvedValue(visitaParaAcesso);
+
+    const resposta = await requisitar("PATCH", "/10/observacoes", "fiscalizador", 6, {
+      observacoes_livres: "Texto",
+    });
+
+    expect(resposta.status).toBe(404);
+    expect(visitaService.salvarObservacoes).not.toHaveBeenCalled();
+  });
+
+  it("responde 404 quando a visita não existe", async () => {
+    visitaService.buscarParaAcesso.mockResolvedValue(null);
+
+    const resposta = await requisitar("PATCH", "/99/observacoes", "fiscalizador", 5, {
+      observacoes_livres: "Texto",
+    });
+
+    expect(resposta.status).toBe(404);
+  });
+
+  it("responde 404 quando a visita some durante a gravação", async () => {
+    visitaService.buscarParaAcesso.mockResolvedValue(visitaParaAcesso);
+    visitaService.salvarObservacoes.mockResolvedValue(null);
+
+    const resposta = await requisitar("PATCH", "/10/observacoes", "fiscalizador", 5, {
+      observacoes_livres: "Texto",
+    });
+
+    expect(resposta.status).toBe(404);
+  });
+
+  it("responde 403 para gestor e admin, que não registram observações pelo app", async () => {
+    for (const role of ["gestor", "admin"]) {
+      const resposta = await requisitar("PATCH", "/10/observacoes", role, 1, {
+        observacoes_livres: "Texto",
+      });
+
+      expect(resposta.status).toBe(403);
+    }
+    expect(visitaService.salvarObservacoes).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o corpo é inválido, sem chamar o service", async () => {
+    for (const corpo of [{}, { observacoes_livres: 123 }, { observacoes_livres: "a".repeat(5001) }]) {
+      const resposta = await requisitar("PATCH", "/10/observacoes", "fiscalizador", 5, corpo);
+
+      expect(resposta.status).toBe(400);
+    }
+    expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 com a mensagem do service quando o documento já foi gerado", async () => {
+    const erro = new Error(
+      "O documento da visita já foi gerado; as observações não podem mais ser alteradas"
+    );
+    erro.name = "ValidacaoError";
+    erro.errors = [{ message: erro.message }];
+    visitaService.buscarParaAcesso.mockResolvedValue(visitaParaAcesso);
+    visitaService.salvarObservacoes.mockRejectedValue(erro);
+
+    const resposta = await requisitar("PATCH", "/10/observacoes", "fiscalizador", 5, {
+      observacoes_livres: "Texto",
+    });
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Erro ao salvar observações",
+      erros: [erro.message],
+    });
   });
 });

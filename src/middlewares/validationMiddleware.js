@@ -12,6 +12,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ISO_DATE_REGEX =
   /^(\d{4})-(\d{2})-(\d{2})(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 const ID_MAXIMO = 2147483647;
+const TAMANHO_MAXIMO_OBSERVACOES = 5000;
 
 const inteiroPositivo = (valor) =>
   Number.isInteger(valor) && valor >= 1 && valor <= ID_MAXIMO;
@@ -235,5 +236,27 @@ export const validarRespostasQuestionario = (req, res, next) => {
   }
 
   const erros = validarListaRespostas(req.body.respostas);
+  return finalizarValidacao(res, next, erros);
+};
+
+export const validarObservacoesVisita = (req, res, next) => {
+  if (!ehObjeto(req.body)) {
+    return responderErro(res, 400, "Dados inválidos", [
+      "O corpo da requisição deve ser um objeto JSON",
+    ]);
+  }
+
+  const { observacoes_livres: observacoes } = req.body;
+  const erros = [];
+
+  if (observacoes !== null && typeof observacoes !== "string") {
+    erros.push("observacoes_livres deve ser um texto ou null");
+  } else if (
+    typeof observacoes === "string" &&
+    observacoes.trim().length > TAMANHO_MAXIMO_OBSERVACOES
+  ) {
+    erros.push(`observacoes_livres deve ter no máximo ${TAMANHO_MAXIMO_OBSERVACOES} caracteres`);
+  }
+
   return finalizarValidacao(res, next, erros);
 };

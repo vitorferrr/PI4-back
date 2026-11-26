@@ -5,6 +5,7 @@ import {
   validarCriacaoVisita,
   validarListagemUsuarios,
   validarListagemVisitas,
+  validarObservacoesVisita,
   validarRespostasQuestionario,
 } from "../middlewares/validationMiddleware.js";
 
@@ -254,5 +255,58 @@ describe("validarRespostasQuestionario", () => {
       vi.fn()
     );
     expect(res2.status).toHaveBeenCalledWith(400);
+  });
+});
+
+describe("validarObservacoesVisita", () => {
+  it("aceita texto, texto vazio e null", () => {
+    for (const observacoes_livres of ["Produtos vencidos", "", null, "a".repeat(5000)]) {
+      const res = criarRes();
+      const next = vi.fn();
+
+      validarObservacoesVisita({ body: { observacoes_livres } }, res, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.status).not.toHaveBeenCalled();
+    }
+  });
+
+  it("conta o limite sem os espaços das pontas", () => {
+    const res = criarRes();
+    const next = vi.fn();
+
+    validarObservacoesVisita({ body: { observacoes_livres: `  ${"a".repeat(5000)}  ` } }, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejeita campo ausente, tipo errado ou texto longo demais", () => {
+    const casos = [
+      [{}, "observacoes_livres deve ser um texto ou null"],
+      [{ observacoes_livres: 10 }, "observacoes_livres deve ser um texto ou null"],
+      [{ observacoes_livres: ["texto"] }, "observacoes_livres deve ser um texto ou null"],
+      [{ observacoes_livres: "a".repeat(5001) }, "observacoes_livres deve ter no máximo 5000 caracteres"],
+    ];
+
+    for (const [body, mensagem] of casos) {
+      const res = criarRes();
+      const next = vi.fn();
+
+      validarObservacoesVisita({ body }, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json.mock.calls[0][0].erros).toContain(mensagem);
+    }
+  });
+
+  it("rejeita corpo que não é objeto", () => {
+    const res = criarRes();
+    const next = vi.fn();
+
+    validarObservacoesVisita({ body: "texto" }, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
   });
 });
