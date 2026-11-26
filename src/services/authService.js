@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import Sequelize from "sequelize";
 import jwt from "jsonwebtoken";
 import models from "../models/index.js";
+import AppError from "../utils/appError.js";
 import erroValidacao from "../utils/erroValidacao.js";
 import normalizarEmail from "../utils/normalizarEmail.js";
 import usuarioService from "./usuarioService.js";
@@ -13,26 +14,12 @@ const { Op } = Sequelize;
 const SENHA_MINIMA = 8;
 const SENHA_MAXIMA = 72;
 
-const erroAutenticacao = () => {
-  const erro = new Error("Email ou senha inválidos");
-  erro.name = "AutenticacaoError";
+const erroAutenticacao = () => new AppError("Email ou senha inválidos", 401);
 
-  return erro;
-};
+const erroCadastroPendente = () =>
+  new AppError("Cadastro aguardando aprovação de um administrador", 403);
 
-const erroCadastroPendente = () => {
-  const erro = new Error("Cadastro aguardando aprovação de um administrador");
-  erro.name = "CadastroPendenteError";
-
-  return erro;
-};
-
-const erroEmailCadastrado = () => {
-  const erro = new Error("Email já cadastrado");
-  erro.name = "EmailCadastradoError";
-
-  return erro;
-};
+const erroEmailCadastrado = () => new AppError("Email já cadastrado", 409);
 
 const abrirSessao = (usuario) => {
   const token = jwt.sign(

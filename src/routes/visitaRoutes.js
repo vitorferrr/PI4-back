@@ -8,14 +8,18 @@ import validarId, {
   validarIdParametro,
   validarParametroId,
 } from "../middlewares/validarIdMiddleware.js";
+import validate from "../middlewares/validate.js";
 import {
-  validarAtualizacaoResposta,
-  validarAtualizacaoVisita,
-  validarCriacaoVisita,
-  validarListagemVisitas,
-  validarObservacoesVisita,
-  validarRespostasQuestionario,
-} from "../middlewares/validationMiddleware.js";
+  adicionarFiscalizadorSchema,
+  atualizarRespostaSchema,
+  atualizarVisitaSchema,
+  criarVisitaSchema,
+  iniciarVisitaSchema,
+  listarVisitasSchema,
+  observacoesVisitaSchema,
+  salvarRespostasSchema,
+  substituirFiscalizadoresSchema,
+} from "../middlewares/validationSchemas.js";
 
 const router = Router();
 
@@ -23,7 +27,7 @@ router.post(
   "/",
   autenticar,
   autorizar("admin", "gestor"),
-  validarCriacaoVisita,
+  validate(criarVisitaSchema),
   visitaController.criar
 );
 
@@ -31,7 +35,7 @@ router.get(
   "/",
   autenticar,
   autorizar("admin", "gestor", "fiscalizador"),
-  validarListagemVisitas,
+  validate(listarVisitasSchema),
   visitaController.listar
 );
 
@@ -48,7 +52,7 @@ router.put(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
-  validarAtualizacaoVisita,
+  validate(atualizarVisitaSchema),
   visitaController.atualizar
 );
 
@@ -73,6 +77,7 @@ router.post(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
+  validate(adicionarFiscalizadorSchema),
   visitaController.adicionarFiscalizador
 );
 
@@ -81,6 +86,7 @@ router.put(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
+  validate(substituirFiscalizadoresSchema),
   visitaController.substituirFiscalizadores
 );
 
@@ -98,6 +104,7 @@ router.patch(
   autenticar,
   autorizar("fiscalizador"),
   validarId,
+  validate(iniciarVisitaSchema),
   visitaController.iniciar
 );
 
@@ -114,7 +121,7 @@ router.patch(
   autenticar,
   autorizar("fiscalizador"),
   validarId,
-  validarObservacoesVisita,
+  validate(observacoesVisitaSchema),
   visitaController.salvarObservacoes
 );
 
@@ -123,7 +130,7 @@ router.post(
   autenticar,
   autorizar("fiscalizador"),
   validarId,
-  validarRespostasQuestionario,
+  validate(salvarRespostasSchema),
   questionarioController.salvarRespostas
 );
 
@@ -150,7 +157,7 @@ router.put(
   autorizar("fiscalizador"),
   validarId,
   validarIdParametro("respostaId"),
-  validarAtualizacaoResposta,
+  validate(atualizarRespostaSchema),
   questionarioController.atualizarResposta
 );
 

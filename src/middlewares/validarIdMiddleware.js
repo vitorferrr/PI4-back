@@ -1,13 +1,12 @@
-// Maior valor aceito por uma coluna INTEGER do Postgres.
+import AppError from "../utils/appError.js";
+
 const ID_MAXIMO = 2147483647;
 
 export const validarParametroId = (nomeParametro = "id") => (req, res, next) => {
   const valor = req.params[nomeParametro];
 
   if (!/^[1-9]\d*$/.test(valor) || Number(valor) > ID_MAXIMO) {
-    return res.status(400).json({
-      mensagem: "Id inválido",
-    });
+    return next(new AppError("Id inválido", 400));
   }
 
   next();

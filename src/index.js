@@ -1,6 +1,7 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 import { sequelize } from "./models/index.js";
 import usuarioRoutes from "./routes/usuarioRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -9,9 +10,11 @@ import questionarioRoutes from "./routes/questionarioRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import documentoRoutes from "./routes/documentoRoutes.js";
 import errorHandler from "./middlewares/errorHandler.js";
+import notFoundMiddleware from "./middlewares/notFound.js";
 
 const app = express();
 
+app.use(helmet());
 app.use(
   cors({
     exposedHeaders: ["X-Total-Count", "X-Truncated", "Content-Disposition"],
@@ -19,21 +22,6 @@ app.use(
 );
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
-app.use((erro, req, res, next) => {
-  if (erro.type === "entity.too.large") {
-    return res.status(413).json({
-      mensagem: "O corpo da requisição deve ter no máximo 1 MB",
-    });
-  }
-
-  if (erro.type === "entity.parse.failed") {
-    return res.status(400).json({
-      mensagem: "JSON inválido no corpo da requisição",
-    });
-  }
-
-  return next(erro);
-});
 app.use(async (req, res, next) => {
   try {
     await conectarBanco();
@@ -55,6 +43,8 @@ app.use("/documentos", documentoRoutes);
 app.get("/", (req, res) => {
   return res.send("Servidor express executando...");
 });
+
+app.use(notFoundMiddleware);
 
 app.use(errorHandler);
 

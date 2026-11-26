@@ -10,6 +10,7 @@ import {
 import express from "express";
 import jwt from "jsonwebtoken";
 import adminRoutes from "../routes/adminRoutes.js";
+import errorHandler from "../middlewares/errorHandler.js";
 import adminService from "../services/adminService.js";
 
 vi.mock("../services/authService.js", () => ({ default: { tokenRevogado: vi.fn(async () => false) } }));
@@ -41,6 +42,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use("/admin", adminRoutes);
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -118,7 +120,7 @@ describe("GET /admin/dados-gerais", () => {
 
     expect(resposta.status).toBe(500);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao obter dados gerais",
+      mensagem: "Erro interno do servidor",
     });
     consoleError.mockRestore();
   });
@@ -187,7 +189,7 @@ describe("GET /admin/exportar", () => {
 
     expect(resposta.status).toBe(500);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao exportar visitas",
+      mensagem: "Erro interno do servidor",
     });
     consoleError.mockRestore();
   });

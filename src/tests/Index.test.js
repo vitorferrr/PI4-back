@@ -42,7 +42,9 @@ describe("inicialização na Vercel", () => {
     vi.stubEnv("VERCEL", "1");
   });
 
-  it("responde normalmente quando o banco conecta", async () => {
+  // Primeiro teste do arquivo: carrega o back inteiro do zero (rotas, Zod, Helmet...).
+  // Com todos os arquivos de teste rodando em paralelo, isso pode passar dos 5 s padrão.
+  it("responde normalmente quando o banco conecta", { timeout: 20000 }, async () => {
     sync.mockResolvedValue();
     const app = await carregarApp();
 
@@ -50,6 +52,29 @@ describe("inicialização na Vercel", () => {
 
     expect(resposta.status).toBe(200);
     expect(await resposta.text()).toBe("Servidor express executando...");
+  });
+
+  it("responde 404 em JSON quando a rota não existe", async () => {
+    sync.mockResolvedValue();
+    const app = await carregarApp();
+
+    const resposta = await requisitar(app, "/rota-que-nao-existe");
+
+    expect(resposta.status).toBe(404);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Rota /rota-que-nao-existe não encontrada no servidor.",
+    });
+  });
+
+  it("envia os headers de segurança do Helmet e esconde o X-Powered-By", async () => {
+    sync.mockResolvedValue();
+    const app = await carregarApp();
+
+    const resposta = await requisitar(app, "/");
+
+    expect(resposta.headers.get("content-security-policy")).toBeTruthy();
+    expect(resposta.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(resposta.headers.get("x-powered-by")).toBeNull();
   });
 
   it.each(["/", "/usuarios", "/visitas/1", "/auth/login"])(

@@ -3,6 +3,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import visitaRoutes from "../routes/visitaRoutes.js";
 import visitaService from "../services/visitaService.js";
+import errorHandler from "../middlewares/errorHandler.js";
 
 vi.mock("../services/authService.js", () => ({ default: { tokenRevogado: vi.fn(async () => false) } }));
 vi.mock("../services/visitaService.js", () => ({
@@ -60,6 +61,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use("/visitas", visitaRoutes);
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -193,8 +195,7 @@ describe("POST /visitas", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao criar visita",
-      erros: ["erro do service"],
+      mensagem: "erro do service",
     });
   });
 
@@ -209,8 +210,7 @@ describe("POST /visitas", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao criar visita",
-      erros: ["denunciado vazio", "data inválida"],
+      mensagem: "denunciado vazio, data inválida",
     });
   });
 
@@ -294,15 +294,16 @@ describe("GET /visitas", () => {
   });
 });
 
+// O iniciar exige a localização do fiscal (iniciarVisitaSchema); o concluir não tem corpo.
 describe.each([
-  ["iniciar", "Erro ao iniciar visita"],
-  ["concluir", "Erro ao concluir visita"],
-])("PATCH /visitas/:id/%s", (acao, mensagemErro) => {
+  ["iniciar", { latitude: -8.1127, longitude: -35.0147 }],
+  ["concluir", undefined],
+])("PATCH /visitas/:id/%s", (acao, corpo) => {
   it("aplica a transição para o fiscalizador associado", async () => {
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
     visitaService[acao].mockResolvedValue({ id: 10 });
 
-    const resposta = await requisitar("PATCH", `/10/${acao}`);
+    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 5, corpo);
 
     expect(resposta.status).toBe(200);
     expect(visitaService[acao].mock.calls[0][0]).toBe("10");
@@ -311,7 +312,7 @@ describe.each([
   it("responde 404 e não altera a visita para fiscalizador não associado", async () => {
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
 
-    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 6);
+    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 6, corpo);
 
     expect(resposta.status).toBe(404);
     expect(visitaService[acao]).not.toHaveBeenCalled();
@@ -320,7 +321,7 @@ describe.each([
   it("responde 404 quando a visita não existe", async () => {
     visitaService.buscarPorId.mockResolvedValue(null);
 
-    const resposta = await requisitar("PATCH", `/99/${acao}`);
+    const resposta = await requisitar("PATCH", `/99/${acao}`, "fiscalizador", 5, corpo);
 
     expect(resposta.status).toBe(404);
     expect(visitaService[acao]).not.toHaveBeenCalled();
@@ -330,7 +331,7 @@ describe.each([
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
     visitaService[acao].mockResolvedValue(null);
 
-    const resposta = await requisitar("PATCH", `/10/${acao}`);
+    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 5, corpo);
 
     expect(resposta.status).toBe(404);
   });
@@ -341,12 +342,11 @@ describe.each([
     visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
     visitaService[acao].mockRejectedValue(erro);
 
-    const resposta = await requisitar("PATCH", `/10/${acao}`);
+    const resposta = await requisitar("PATCH", `/10/${acao}`, "fiscalizador", 5, corpo);
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: mensagemErro,
-      erros: ["transição inválida"],
+      mensagem: "transição inválida",
     });
   });
 
@@ -398,13 +398,7 @@ describe("PATCH /visitas/:id/iniciar com localização", () => {
     expect(visitaService.iniciar).toHaveBeenCalledWith("10", coordenadas);
   });
 
-  it("responde 400 com os erros quando a localização é inválida", async () => {
-    const erro = new Error("A latitude deve ser um número entre -90 e 90");
-    erro.name = "ValidacaoError";
-    erro.errors = [{ message: "A latitude deve ser um número entre -90 e 90" }];
-    visitaService.buscarPorId.mockResolvedValue(visitaDoFiscalizador5);
-    visitaService.iniciar.mockRejectedValue(erro);
-
+  it("responde 400 pelo schema quando a localização é inválida, sem chamar o service", async () => {
     const resposta = await requisitar("PATCH", "/10/iniciar", "fiscalizador", 5, {
       latitude: 200,
       longitude: -35,
@@ -412,8 +406,19 @@ describe("PATCH /visitas/:id/iniciar com localização", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao iniciar visita",
-      erros: ["A latitude deve ser um número entre -90 e 90"],
+      mensagem: "A latitude deve ser um número entre -90 e 90",
+    });
+    expect(visitaService.buscarPorId).not.toHaveBeenCalled();
+    expect(visitaService.iniciar).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando a localização não é enviada", async () => {
+    const resposta = await requisitar("PATCH", "/10/iniciar", "fiscalizador", 5, {});
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem:
+        "A latitude deve ser um número entre -90 e 90; A longitude deve ser um número entre -180 e 180",
     });
   });
 });
@@ -426,7 +431,7 @@ describe("erros inesperados", () => {
     const resposta = await requisitar("GET", "/10");
 
     expect(resposta.status).toBe(500);
-    expect(await resposta.json()).toEqual({ mensagem: "Erro ao buscar visita" });
+    expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     consoleError.mockRestore();
   });
 });
@@ -526,8 +531,7 @@ describe("PATCH /visitas/:id/observacoes", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao salvar observações",
-      erros: [erro.message],
+      mensagem: erro.message,
     });
   });
 });
