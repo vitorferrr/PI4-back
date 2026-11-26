@@ -177,7 +177,7 @@ describe("login (authService)", () => {
       expect(usuario.update).not.toHaveBeenCalled();
     });
 
-    it("continua rejeitando (401, não 500) se a migração do hash falhar ao gravar", async () => {
+    it("conclui o login mesmo se a migração do hash falhar ao gravar", async () => {
       const usuario = usuarioComHashBcrypt(await bcrypt.hash("1234", 10));
       usuario.update.mockRejectedValue(new Error("banco fora"));
       Usuario.findOne.mockResolvedValue(usuario);
