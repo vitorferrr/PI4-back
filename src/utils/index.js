@@ -4,6 +4,7 @@ export { default as campoTextoOpcional } from "./campoTextoOpcional.js";
 export { default as emailValido } from "./emailValido.js";
 export { default as erroValidacao } from "./erroValidacao.js";
 export { default as gerarSenha } from "./gerarSenha.js";
+export { default as gerarHashSenha } from "./hashSenha.js";
 export { default as normalizarEmail } from "./normalizarEmail.js";
 export {
   default as tratarErro,

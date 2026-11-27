@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import bcrypt from "bcrypt";
+import argon2 from "argon2";
+import gerarHashSenha from "../utils/hashSenha.js";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Sequelize from "sequelize";
 import models from "../models/index.js";
@@ -47,7 +49,7 @@ beforeEach(() => {
 
 describe("login (authService)", () => {
   it("retorna token válido e dados do usuário sem a senha", async () => {
-    const senha_hash = await bcrypt.hash("1234", 10);
+    const senha_hash = await argon2.hash("1234");
     Usuario.findOne.mockResolvedValue({
       id: 1,
       nome: "Bia",
@@ -117,7 +119,7 @@ describe("login (authService)", () => {
       id: 1,
       role: "fiscalizador",
       aprovado: false,
-      senha_hash: await bcrypt.hash("senha-forte", 10),
+      senha_hash: await argon2.hash("senha-forte"),
     });
 
     await expect(
@@ -132,7 +134,7 @@ describe("login (authService)", () => {
     Usuario.findOne.mockResolvedValue({
       id: 1,
       aprovado: false,
-      senha_hash: await bcrypt.hash("senha-forte", 10),
+      senha_hash: await argon2.hash("senha-forte"),
     });
 
     await expect(
@@ -143,12 +145,119 @@ describe("login (authService)", () => {
   it("rejeita quando a senha está errada", async () => {
     Usuario.findOne.mockResolvedValue({
       id: 1,
-      senha_hash: await bcrypt.hash("certa", 10),
+      senha_hash: await argon2.hash("certa"),
     });
 
     await expect(
       authService.login({ email: "bia@exemplo.com", senha: "errada" })
     ).rejects.toThrow("Email ou senha inválidos");
+  });
+
+  describe("migração do hash de bcrypt para argon2 no login", () => {
+    const usuarioComHashBcrypt = (senha_hash) => ({
+      id: 1,
+      nome: "Bia",
+      email: "bia@exemplo.com",
+      role: "gestor",
+      senha_hash,
+      update: vi.fn(async (dados) => Object.assign({}, dados)),
+    });
+
+    it("aceita a senha com hash antigo (bcrypt) e regrava o hash em argon2", async () => {
+      const usuario = usuarioComHashBcrypt(await bcrypt.hash("1234", 10));
+      Usuario.findOne.mockResolvedValue(usuario);
+
+      const resultado = await authService.login({ email: "bia@exemplo.com", senha: "1234" });
+
+      expect(resultado.usuario.id).toBe(1);
+      expect(usuario.update).toHaveBeenCalledTimes(1);
+      const novoHash = usuario.update.mock.calls[0][0].senha_hash;
+      expect(novoHash).toMatch(/^\$argon2/);
+      expect(await argon2.verify(novoHash, "1234")).toBe(true);
+    });
+
+    it("rejeita senha errada com hash antigo (bcrypt) sem migrar o hash", async () => {
+      const usuario = usuarioComHashBcrypt(await bcrypt.hash("certa", 10));
+      Usuario.findOne.mockResolvedValue(usuario);
+
+      await expect(
+        authService.login({ email: "bia@exemplo.com", senha: "errada" })
+      ).rejects.toMatchObject({ statusCode: 401, message: "Email ou senha inválidos" });
+      expect(usuario.update).not.toHaveBeenCalled();
+    });
+
+    it("conclui o login mesmo se a migração do hash falhar ao gravar", async () => {
+      const usuario = usuarioComHashBcrypt(await bcrypt.hash("1234", 10));
+      usuario.update.mockRejectedValue(new Error("banco fora"));
+      Usuario.findOne.mockResolvedValue(usuario);
+
+      const resultado = await authService.login({ email: "bia@exemplo.com", senha: "1234" });
+
+      expect(resultado.usuario.id).toBe(1);
+      expect(console.error).toHaveBeenCalledWith(
+        "Falha ao migrar hash de senha para Argon2:",
+        "banco fora"
+      );
+    });
+  });
+
+  describe("revisão da PR: falhas do Argon2 no log e hash fictício", () => {
+    const parametros = (hash) => hash.split("$").slice(1, 4).join("$");
+
+    it("o hash fictício usa os mesmos parâmetros (versão, m, t, p) da função que gera o hash das senhas reais", async () => {
+      const verifySpy = vi.spyOn(argon2, "verify");
+      Usuario.findOne.mockResolvedValue(null);
+
+      await expect(
+        authService.login({ email: "fantasma@exemplo.com", senha: "qualquer" })
+      ).rejects.toMatchObject({ statusCode: 401 });
+
+      const [hashFicticio] = verifySpy.mock.calls[0];
+      const hashReal = await gerarHashSenha("uma-senha-de-verdade");
+      expect(parametros(hashFicticio)).toBe(parametros(hashReal));
+      verifySpy.mockRestore();
+    });
+
+    it("falha do argon2.verify ainda responde 401, mas registra no log", async () => {
+      const usuario = { id: 1, senha_hash: await argon2.hash("certa"), update: vi.fn() };
+      Usuario.findOne.mockResolvedValue(usuario);
+      const verifySpy = vi.spyOn(argon2, "verify").mockRejectedValueOnce(new Error("sem memória"));
+
+      await expect(authService.login({ email: "bia@exemplo.com", senha: "certa" })).rejects.toMatchObject({
+        statusCode: 401,
+      });
+      expect(console.error).toHaveBeenCalledWith("Falha ao verificar senha:", "sem memória");
+      verifySpy.mockRestore();
+    });
+
+    it("falha do bcrypt.compare no hash antigo responde 401, registra no log e não migra", async () => {
+      const usuario = { id: 1, senha_hash: await bcrypt.hash("certa", 4), update: vi.fn() };
+      Usuario.findOne.mockResolvedValue(usuario);
+      const compareSpy = vi.spyOn(bcrypt, "compare").mockRejectedValueOnce(new Error("hash corrompido"));
+
+      await expect(authService.login({ email: "bia@exemplo.com", senha: "certa" })).rejects.toMatchObject({
+        statusCode: 401,
+      });
+      expect(console.error).toHaveBeenCalledWith("Falha ao verificar senha:", "hash corrompido");
+      expect(usuario.update).not.toHaveBeenCalled();
+      compareSpy.mockRestore();
+    });
+  });
+
+  describe("tempo de resposta não revela se o e-mail existe", () => {
+    it("confere a senha contra um hash fictício quando o usuário não existe", async () => {
+      const verifySpy = vi.spyOn(argon2, "verify");
+      Usuario.findOne.mockResolvedValue(null);
+
+      await expect(
+        authService.login({ email: "fantasma@exemplo.com", senha: "qualquer" })
+      ).rejects.toMatchObject({ statusCode: 401, message: "Email ou senha inválidos" });
+
+      expect(verifySpy).toHaveBeenCalledTimes(1);
+      const [hashUsado] = verifySpy.mock.calls[0];
+      expect(hashUsado).toMatch(/^\$argon2/);
+      verifySpy.mockRestore();
+    });
   });
 });
 
