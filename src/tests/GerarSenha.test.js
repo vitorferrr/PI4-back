@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import gerarSenha from "../utils/gerarSenha.js";
 
 describe("gerarSenha", () => {
-  it("gera três blocos de 4 caracteres separados por hífen", () => {
-    expect(gerarSenha()).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+  it("gera 12 caracteres seguidos, sem hífen", () => {
+    expect(gerarSenha()).toMatch(/^[A-Z2-9]{12}$/);
   });
 
   it("usa só maiúsculas e números, sempre os dois, sem caracteres parecidos", () => {

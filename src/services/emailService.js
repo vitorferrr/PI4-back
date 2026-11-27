@@ -171,6 +171,8 @@ const htmlSenhaGerada = ({ titulo, apresentacao, senha }) => `<!doctype html>
 </head>
 <body style="margin:0;padding:0;background:#F5F5F7">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F5F7">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px">
 <tr><td style="font-size:0;line-height:0"><img src="cid:${CID_FAIXA}" width="600" alt="" style="display:block;width:100%;max-width:600px;height:auto;border:0"></td></tr>
 <tr><td align="center" style="padding:40px 28px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;background:#FFFFFF;border-radius:18px">
@@ -187,6 +189,8 @@ const htmlSenhaGerada = ({ titulo, apresentacao, senha }) => `<!doctype html>
 <p style="margin:0 0 22px;font-size:14px;line-height:1.55;color:#6E6E73">Toque duas vezes na senha para selecionar e copiar. Entre com este e-mail no app, pelo celular, ou no painel, pelo navegador do computador.</p>
 <div style="height:1px;line-height:1px;font-size:0;background:#E3E3E6;margin:0 0 22px">&nbsp;</div>
 <p style="margin:0;font-size:13px;line-height:1.55;color:#8E8E93">Você vai entrar com este e-mail. ${AVISO_ENGANO}</p>
+</td></tr>
+</table>
 </td></tr>
 </table>
 </td></tr>
