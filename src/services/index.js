@@ -2,7 +2,12 @@ export { default as adminService } from "./adminService.js";
 export { default as assinaturaService } from "./assinaturaService.js";
 export { default as authService } from "./authService.js";
 export { default as documentoService, ENVIO } from "./documentoService.js";
-export { default as emailService, enviarDocumentoVisita, enviarEmail } from "./emailService.js";
+export {
+  default as emailService,
+  enviarDocumentoVisita,
+  enviarEmail,
+  enviarSenhaGerada,
+} from "./emailService.js";
 export { default as pdfService } from "./pdfService.js";
 export { default as questionarioService } from "./questionarioService.js";
 export {

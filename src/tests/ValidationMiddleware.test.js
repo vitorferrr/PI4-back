@@ -52,7 +52,6 @@ describe("validarCriacaoUsuario", () => {
         body: {
           nome: "Ana",
           email: "ana@procon.gov.br",
-          senha: "segredo123",
           role: "gestor",
         },
       },
@@ -73,7 +72,6 @@ describe("validarCriacaoUsuario", () => {
         body: {
           nome: "",
           email: "invalido",
-          senha: "123",
           role: "visitante",
         },
       },
@@ -85,7 +83,7 @@ describe("validarCriacaoUsuario", () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
       mensagem:
-        "O campo nome é obrigatório; Informe um email válido; A senha deve ter ao menos 6 caracteres; Perfil (role) inválido",
+        "O campo nome é obrigatório; Informe um email válido; Perfil (role) inválido",
     });
   });
 });

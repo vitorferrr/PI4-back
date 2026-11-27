@@ -27,7 +27,7 @@ const validar = (schema, { body, query = {}, params = {} } = {}) => {
 };
 
 describe("criarUsuarioSchema", () => {
-  const valido = { nome: "Bia", email: "bia@exemplo.com", senha: "123456", role: "gestor" };
+  const valido = { nome: "Bia", email: "bia@exemplo.com", role: "gestor" };
 
   it("aceita um usuário válido sem mudar os valores", () => {
     const corpo = { ...valido, email: " bia@exemplo.com " };
@@ -37,12 +37,11 @@ describe("criarUsuarioSchema", () => {
   it("recusa cada campo inválido com a mensagem de sempre", () => {
     expect(
       validar(criarUsuarioSchema, {
-        body: { nome: "  ", email: "bia.com", senha: "12345", role: "chefe" },
+        body: { nome: "  ", email: "bia.com", role: "chefe" },
       }).mensagens
     ).toEqual([
       "O campo nome é obrigatório",
       "Informe um email válido",
-      "A senha deve ter ao menos 6 caracteres",
       "Perfil (role) inválido",
     ]);
   });

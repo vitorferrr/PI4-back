@@ -242,3 +242,84 @@ describe("enviar documento da visita", () => {
     expect(transporte.sendMail).not.toHaveBeenCalled();
   });
 });
+
+describe("enviar senha gerada no cadastro", () => {
+  const acesso = {
+    para: "carla@exemplo.com",
+    nome: "Carla Mendes",
+    quemCadastrou: "Helena Matos",
+    role: "fiscalizador",
+    senha: "K7MQ2PV9RTA4",
+  };
+
+  it("envia a senha no texto e no HTML, com a faixa do topo embutida", async () => {
+    await emailService.enviarSenhaGerada(acesso);
+
+    const enviado = transporte.sendMail.mock.calls[0][0];
+    expect(enviado.to).toBe("carla@exemplo.com");
+    expect(enviado.subject).toBe("Constata - Seu acesso está pronto");
+    expect(enviado.text).toContain("Olá, Carla. Seu acesso está pronto.");
+    expect(enviado.text).toContain("Helena Matos cadastrou você como fiscalizador no Constata");
+    expect(enviado.text).toContain("Sua senha: K7MQ2PV9RTA4");
+    expect(enviado.html).toContain("Olá, Carla. Seu acesso está pronto.");
+    expect(enviado.html).toContain(">K7MQ2PV9RTA4</p>");
+    expect(enviado.html).not.toContain("fonts.googleapis.com");
+    expect(enviado.html).not.toContain("nenhuma conta será ativada");
+    expect(enviado.html).toContain(
+      "Se você não esperava este e-mail, avise o Procon Jaboatão para que o acesso seja cancelado."
+    );
+    expect(enviado.text).toContain(
+      "Se você não esperava este e-mail, avise o Procon Jaboatão para que o acesso seja cancelado."
+    );
+    expect(enviado.html).toContain('src="cid:faixa-topo@constata"');
+    expect(enviado.html).toContain('width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px"');
+    expect(enviado.attachments).toEqual([
+      {
+        filename: "faixa-topo.png",
+        content: expect.any(Buffer),
+        contentType: "image/png",
+        cid: "faixa-topo@constata",
+      },
+    ]);
+    expect(enviado.attachments[0].content.subarray(1, 4).toString()).toBe("PNG");
+  });
+
+  it.each([
+    ["gestor", "como gestor"],
+    ["admin", "como administrador"],
+  ])("descreve o perfil %s", async (role, trecho) => {
+    await emailService.enviarSenhaGerada({ ...acesso, role });
+
+    expect(transporte.sendMail.mock.calls[0][0].html).toContain(trecho);
+  });
+
+  it("escapa o HTML dos nomes e usa padrões quando faltam", async () => {
+    await emailService.enviarSenhaGerada({ ...acesso, nome: "<b>Ana</b> Lima", quemCadastrou: " " });
+
+    const { html, text } = transporte.sendMail.mock.calls[0][0];
+    expect(html).toContain("Olá, &lt;b&gt;Ana&lt;/b&gt;.");
+    expect(html).not.toContain("<b>Ana</b>");
+    expect(text).toContain("O administrador cadastrou você");
+  });
+
+  it("no reenvio, avisa que a senha foi renovada e que a anterior deixou de valer", async () => {
+    await emailService.enviarSenhaGerada({ ...acesso, reenvio: true });
+
+    const enviado = transporte.sendMail.mock.calls[0][0];
+    expect(enviado.subject).toBe("Constata - Sua nova senha de acesso");
+    expect(enviado.html).toContain("Olá, Carla. Sua senha foi renovada.");
+    expect(enviado.text).toContain("Helena Matos gerou uma nova senha para o seu acesso ao Constata");
+    expect(enviado.text).toContain("A senha anterior deixou de valer.");
+    expect(enviado.text).toContain("Sua senha: K7MQ2PV9RTA4");
+  });
+
+  it("rejeita perfil desconhecido ou senha vazia sem enviar", async () => {
+    await expect(emailService.enviarSenhaGerada({ ...acesso, role: "chefe" })).rejects.toThrow(
+      "Perfil inválido para o e-mail de acesso"
+    );
+    await expect(emailService.enviarSenhaGerada({ ...acesso, senha: "" })).rejects.toThrow(
+      "A senha gerada é obrigatória"
+    );
+    expect(transporte.sendMail).not.toHaveBeenCalled();
+  });
+});

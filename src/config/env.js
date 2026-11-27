@@ -58,6 +58,8 @@ export const esquemaEnv = z.object({
     .optional()
     .transform((valor) => Boolean(valor?.trim())),
   ERASE_DATABASE_ON_SYNC: flag(),
+  // DT-33: origens liberadas no CORS, separadas por vírgula (opcional; padrão em middlewares/cors.js)
+  ALLOWED_ORIGINS: textoOpcional(),
 
   // INT-06: Storage (opcional; validado em config/supabase.js ao ser usado)
   SUPABASE_URL: textoOpcional(),

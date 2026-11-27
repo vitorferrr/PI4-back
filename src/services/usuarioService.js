@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
-import models from "../models/index.js";
-import { normalizarEmail } from "../utils/index.js";
+import models, { sequelize } from "../models/index.js";
+import { AppError, gerarSenha, normalizarEmail } from "../utils/index.js";
+import { enviarSenhaGerada } from "./emailService.js";
 
 const { Usuario } = models;
 
@@ -17,7 +18,7 @@ const erroValidacao = (mensagem) => {
   return erro;
 };
 
-const criar = async (dados) => {
+const criar = async (dados, { transaction } = {}) => {
   const { nome, senha, role, matricula, aprovado } = dados;
   const email = normalizarEmail(dados.email);
 
@@ -25,7 +26,7 @@ const criar = async (dados) => {
     throw erroValidacao("A senha é obrigatória");
   }
 
-   const existente = await Usuario.findOne({ where: { email } });
+   const existente = await Usuario.findOne({ where: { email }, transaction });
    if (existente) {
       const erro = erroValidacao("Email já cadastrado");
       erro.codigo = "EMAIL_CADASTRADO";
@@ -41,10 +42,74 @@ const criar = async (dados) => {
     role,
     matricula,
     ...(aprovado !== undefined && { aprovado }),
-  });
+  }, { transaction });
 
   return semSenha(usuario);
 };
+
+const gravarEEnviarSenha = async ({ autorId, reenvio = false, mensagemFalha }, gravar) => {
+  const senha = gerarSenha();
+  const autor = autorId ? await Usuario.findByPk(autorId, { attributes: ["nome"] }) : null;
+
+  return await sequelize.transaction(async (transaction) => {
+    const usuario = await gravar(senha, transaction);
+
+    if (!usuario) {
+      return null;
+    }
+
+    try {
+      await enviarSenhaGerada({
+        para: usuario.email,
+        nome: usuario.nome,
+        quemCadastrou: autor?.nome,
+        role: usuario.role,
+        senha,
+        reenvio,
+      });
+    } catch (erro) {
+      if (erro.name !== "EmailError") throw erro;
+      throw new AppError(mensagemFalha, 503);
+    }
+
+    return usuario;
+  });
+};
+
+const criarComSenhaGerada = async (dados, autorId) =>
+  gravarEEnviarSenha(
+    {
+      autorId,
+      mensagemFalha:
+        "Não foi possível enviar o e-mail com a senha. O usuário não foi cadastrado; tente novamente.",
+    },
+    (senha, transaction) => criar({ ...dados, senha }, { transaction })
+  );
+
+const reenviarSenha = async (id, autorId) =>
+  gravarEEnviarSenha(
+    {
+      autorId,
+      reenvio: true,
+      mensagemFalha:
+        "Não foi possível enviar o e-mail com a nova senha. A senha anterior continua valendo; tente novamente.",
+    },
+    async (senha, transaction) => {
+      const usuario = await Usuario.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+
+      if (!usuario) {
+        return null;
+      }
+
+      if (usuario.aprovado === false) {
+        throw erroValidacao("Este cadastro não está aprovado. Aprove o usuário antes de reenviar a senha.");
+      }
+
+      await usuario.update({ senha_hash: await bcrypt.hash(senha, 10) }, { transaction });
+
+      return semSenha(usuario);
+    }
+  );
 
 const listar = async ({ aprovado } = {}) => {
   return await Usuario.findAll({
@@ -139,6 +204,8 @@ const remover = async (id) => {
 
 export default {
   criar,
+  criarComSenhaGerada,
+  reenviarSenha,
   listar,
   buscarPorId,
   atualizar,

@@ -122,7 +122,6 @@ export const criarUsuarioSchema = z.object({
   body: corpoSchema({
     nome: textoPreenchidoSchema("O campo nome é obrigatório"),
     email: emailSchema(),
-    senha: senhaSchema(),
     role: roleSchema(),
   }),
 });

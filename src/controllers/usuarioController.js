@@ -2,9 +2,19 @@ import { usuarioService } from "../services/index.js";
 import { AppError } from "../utils/index.js";
 
 const criar = async (req, res) => {
-  const usuario = await usuarioService.criar(req.body);
+  const usuario = await usuarioService.criarComSenhaGerada(req.body, req.usuario.id);
 
   return res.status(201).json(usuario);
+};
+
+const reenviarSenha = async (req, res) => {
+  const usuario = await usuarioService.reenviarSenha(req.params.id, req.usuario.id);
+
+  if (!usuario) {
+    throw new AppError("Usuário não encontrado", 404);
+  }
+
+  return res.status(200).json(usuario);
 };
 
 const listar = async (req, res) => {
@@ -73,4 +83,5 @@ export default {
   buscarPorId,
   aprovar,
   reprovar,
+  reenviarSenha,
 };

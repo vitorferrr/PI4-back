@@ -4,17 +4,19 @@ import jwt from "jsonwebtoken";
 import usuarioRoutes from "../routes/usuarioRoutes.js";
 import usuarioService from "../services/usuarioService.js";
 import errorHandler from "../middlewares/errorHandler.js";
+import AppError from "../utils/appError.js";
 
 vi.mock("../services/authService.js", () => ({ default: { tokenRevogado: vi.fn(async () => false) } }));
 vi.mock("../services/usuarioService.js", () => ({
   default: {
-    criar: vi.fn(),
+    criarComSenhaGerada: vi.fn(),
     listar: vi.fn(),
     buscarPorId: vi.fn(),
     atualizar: vi.fn(),
     remover: vi.fn(),
     aprovar: vi.fn(),
     reprovar: vi.fn(),
+    reenviarSenha: vi.fn(),
   },
 }));
 
@@ -61,19 +63,20 @@ beforeEach(() => {
 });
 
 const rotas = [
-  ["POST", "", "criar", ["admin"], ["gestor", "fiscalizador"]],
+  ["POST", "", "criarComSenhaGerada", ["admin"], ["gestor", "fiscalizador"]],
   ["GET", "", "listar", ["admin", "gestor"], ["fiscalizador"]],
   ["GET", "/1", "buscarPorId", ["admin"], ["gestor", "fiscalizador"]],
   ["PUT", "/1", "atualizar", ["admin"], ["gestor", "fiscalizador"]],
   ["DELETE", "/1", "remover", ["admin"], ["gestor", "fiscalizador"]],
   ["PATCH", "/1/aprovar", "aprovar", ["admin"], ["gestor", "fiscalizador"]],
   ["PATCH", "/1/reprovar", "reprovar", ["admin"], ["gestor", "fiscalizador"]],
+  ["POST", "/1/reenviar-senha", "reenviarSenha", ["admin"], ["gestor", "fiscalizador"]],
 ];
 
 describe.each(rotas)("%s /usuarios%s", (metodo, caminho, funcaoService, permitidos, bloqueados) => {
   const corpo =
     metodo === "POST"
-      ? { nome: "Bia", email: "bia@exemplo.com", senha: "123456", role: "fiscalizador" }
+      ? { nome: "Bia", email: "bia@exemplo.com", role: "fiscalizador" }
       : metodo === "PUT"
         ? { nome: "Bia" }
         : undefined;
@@ -104,21 +107,41 @@ describe.each(rotas)("%s /usuarios%s", (metodo, caminho, funcaoService, permitid
 });
 
 describe("POST /usuarios (respostas do controller)", () => {
-  const novoUsuario = { nome: "Bia", email: "bia@exemplo.com", senha: "123456", role: "fiscalizador" };
+  const novoUsuario = { nome: "Bia", email: "bia@exemplo.com", role: "fiscalizador" };
 
   const criarErro = (name, extras = {}) =>
     Object.assign(new Error("erro do service"), { name, ...extras });
 
-  it("responde 201 com o usuário criado e repassa o corpo ao service", async () => {
+  it("responde 201 com o usuário criado e repassa o corpo e o admin ao service", async () => {
     const resposta = await requisitar("POST", "", "admin", novoUsuario);
 
     expect(resposta.status).toBe(201);
     expect(await resposta.json()).toEqual(usuarioFalso);
-    expect(usuarioService.criar).toHaveBeenCalledWith(novoUsuario);
+    expect(usuarioService.criarComSenhaGerada).toHaveBeenCalledWith(novoUsuario, 1);
+  });
+
+  it("aceita corpo com senha e deixa o service gerar a dele", async () => {
+    const resposta = await requisitar("POST", "", "admin", { ...novoUsuario, senha: "123456" });
+
+    expect(resposta.status).toBe(201);
+    expect(usuarioService.criarComSenhaGerada).toHaveBeenCalledWith({ ...novoUsuario, senha: "123456" }, 1);
+  });
+
+  it("responde 503 quando o e-mail com a senha não sai", async () => {
+    usuarioService.criarComSenhaGerada.mockRejectedValue(
+      new AppError("Não foi possível enviar o e-mail com a senha. O usuário não foi cadastrado; tente novamente.", 503)
+    );
+
+    const resposta = await requisitar("POST", "", "admin", novoUsuario);
+
+    expect(resposta.status).toBe(503);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Não foi possível enviar o e-mail com a senha. O usuário não foi cadastrado; tente novamente.",
+    });
   });
 
   it("responde 409 quando o banco acusa email duplicado", async () => {
-    usuarioService.criar.mockRejectedValue(
+    usuarioService.criarComSenhaGerada.mockRejectedValue(
       criarErro("SequelizeUniqueConstraintError", { fields: { email: novoUsuario.email } })
     );
 
@@ -129,7 +152,7 @@ describe("POST /usuarios (respostas do controller)", () => {
   });
 
   it("responde 400 quando o service rejeita os dados", async () => {
-    usuarioService.criar.mockRejectedValue(
+    usuarioService.criarComSenhaGerada.mockRejectedValue(
       Object.assign(new Error("A senha é obrigatória"), { name: "ValidacaoError" })
     );
 
@@ -142,7 +165,7 @@ describe("POST /usuarios (respostas do controller)", () => {
   });
 
   it("responde 400 com a lista de erros de validação do Sequelize", async () => {
-    usuarioService.criar.mockRejectedValue(
+    usuarioService.criarComSenhaGerada.mockRejectedValue(
       criarErro("SequelizeValidationError", {
         errors: [{ message: "email inválido" }, { message: "Role deve ser admin, gestor ou fiscalizador" }],
       })
@@ -154,6 +177,57 @@ describe("POST /usuarios (respostas do controller)", () => {
     expect(await resposta.json()).toEqual({
       mensagem: "email inválido, Role deve ser admin, gestor ou fiscalizador",
     });
+  });
+});
+
+describe("POST /usuarios/:id/reenviar-senha (respostas do controller)", () => {
+  it("responde 200 com o usuário e repassa o id e o admin ao service", async () => {
+    const resposta = await requisitar("POST", "/7/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual(usuarioFalso);
+    expect(usuarioService.reenviarSenha).toHaveBeenCalledWith("7", 1);
+  });
+
+  it("responde 404 quando o usuário não existe", async () => {
+    usuarioService.reenviarSenha.mockResolvedValue(null);
+
+    const resposta = await requisitar("POST", "/99/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(404);
+    expect(await resposta.json()).toEqual({ mensagem: "Usuário não encontrado" });
+  });
+
+  it("responde 503 quando o e-mail com a nova senha não sai", async () => {
+    usuarioService.reenviarSenha.mockRejectedValue(
+      new AppError("Não foi possível enviar o e-mail com a nova senha. A senha anterior continua valendo; tente novamente.", 503)
+    );
+
+    const resposta = await requisitar("POST", "/7/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(503);
+  });
+
+  it("responde 400 quando o cadastro não está aprovado", async () => {
+    usuarioService.reenviarSenha.mockRejectedValue(
+      Object.assign(new Error("Este cadastro não está aprovado. Aprove o usuário antes de reenviar a senha."), {
+        name: "ValidacaoError",
+      })
+    );
+
+    const resposta = await requisitar("POST", "/7/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Este cadastro não está aprovado. Aprove o usuário antes de reenviar a senha.",
+    });
+  });
+
+  it("responde 400 para id inválido sem chamar o service", async () => {
+    const resposta = await requisitar("POST", "/abc/reenviar-senha", "admin");
+
+    expect(resposta.status).toBe(400);
+    expect(usuarioService.reenviarSenha).not.toHaveBeenCalled();
   });
 });
 
@@ -329,7 +403,7 @@ describe("DELETE /usuarios/:id (respostas do controller)", () => {
 });
 
 describe.each([
-  ["POST", "", "criar"],
+  ["POST", "", "criarComSenhaGerada"],
   ["GET", "", "listar"],
   ["GET", "/1", "buscarPorId"],
   ["PUT", "/1", "atualizar"],
@@ -340,7 +414,7 @@ describe.each([
     usuarioService[funcaoService].mockRejectedValue(new Error("falha no banco"));
     const corpo =
       metodo === "POST"
-        ? { nome: "Bia", email: "bia@exemplo.com", senha: "123456", role: "fiscalizador" }
+        ? { nome: "Bia", email: "bia@exemplo.com", role: "fiscalizador" }
         : metodo === "PUT"
           ? { nome: "Bia" }
           : undefined;
