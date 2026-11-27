@@ -7,7 +7,7 @@ import { validarImagemAssinatura } from "../utils/validarImagemAssinatura.js";
 import { enviarDocumentoVisita } from "./emailService.js";
 import pdfService from "./pdfService.js";
 import questionarioService from "./questionarioService.js";
-import { baixarArquivo, removerArquivo, uploadArquivo } from "./storageService.js";
+import { baixarArquivo, gerarUrlAssinada, removerArquivo, uploadArquivo } from "./storageService.js";
 
 const { Assinatura, Documento, PerguntaQuestionario, RespostaQuestionario, Visita } = models;
 const { Op } = Sequelize;
@@ -93,6 +93,29 @@ const gerar = async (visitaId) => {
 };
 
 const referenciaDoArquivo = (path) => ({ bucket: getStorageContext().bucket, path });
+
+const VALIDADE_LINK_PDF_SEGUNDOS = 300;
+
+const gerarLinkPdf = async (documentoId) => {
+  const documento = await Documento.findByPk(documentoId, {
+    attributes: ["id", "url_arquivo_pdf"],
+  });
+
+  if (!documento) return null;
+
+  if (!documento.url_arquivo_pdf) return { gerado: false };
+
+  const url = await gerarUrlAssinada(
+    referenciaDoArquivo(documento.url_arquivo_pdf),
+    VALIDADE_LINK_PDF_SEGUNDOS
+  );
+
+  return {
+    gerado: true,
+    url,
+    expira_em: new Date(Date.now() + VALIDADE_LINK_PDF_SEGUNDOS * 1000).toISOString(),
+  };
+};
 
 const nomeDoAssinante = (assinatura) =>
   assinatura.assinante_tipo === "denunciado"
@@ -387,5 +410,6 @@ const finalizar = async (documentoId, { usuario } = {}) => {
 export default {
   gerar,
   finalizar,
+  gerarLinkPdf,
   enviarEmail,
 };

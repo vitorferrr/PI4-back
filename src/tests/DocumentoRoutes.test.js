@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import express from "express";
 import jwt from "jsonwebtoken";
 import visitaRoutes from "../routes/visitaRoutes.js";
+import errorHandler from "../middlewares/errorHandler.js";
 import documentoService from "../services/documentoService.js";
 import visitaService from "../services/visitaService.js";
 
@@ -43,6 +44,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use("/visitas", visitaRoutes);
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -81,12 +83,12 @@ describe("POST /visitas/:id/documento", () => {
     expect(resposta.status).toBe(200);
   });
 
-  it("responde 404 para fiscalizador não associado, sem gerar", async () => {
+  it("responde 403 para fiscalizador não associado, sem gerar", async () => {
     visitaService.buscarParaAcesso.mockResolvedValue(visitaDoFiscalizador5);
 
     const resposta = await requisitar("/visitas/10/documento", "fiscalizador", 6);
 
-    expect(resposta.status).toBe(404);
+    expect(resposta.status).toBe(403);
     expect(documentoService.gerar).not.toHaveBeenCalled();
   });
 
@@ -123,7 +125,7 @@ describe("POST /visitas/:id/documento", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao gerar documento",
+      mensagem: "Responda todas as perguntas antes de gerar o documento",
       erros: ["A pergunta 3 não foi respondida"],
     });
   });

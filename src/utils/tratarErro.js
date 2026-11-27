@@ -28,8 +28,11 @@ export const criarErroHttp = (status, mensagem, erros) => {
 
 export const responderErro = (res, status, mensagem, erros) => {
   const corpo = { mensagem };
-  if (Array.isArray(erros) && erros.length > 0) {
-    corpo.erros = erros;
+  const errosExtras = Array.isArray(erros)
+    ? erros.filter((item) => item !== mensagem)
+    : [];
+  if (errosExtras.length > 0) {
+    corpo.erros = errosExtras;
   }
   return res.status(status).json(corpo);
 };

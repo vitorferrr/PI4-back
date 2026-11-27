@@ -8,13 +8,22 @@ import validarId, {
   validarIdParametro,
   validarParametroId,
 } from "../middlewares/validarIdMiddleware.js";
+import validate from "../middlewares/validate.js";
 import {
-  validarAtualizacaoResposta,
-  validarAtualizacaoVisita,
-  validarCriacaoVisita,
-  validarListagemVisitas,
-  validarRespostasQuestionario,
-} from "../middlewares/validationMiddleware.js";
+  verificarAcessoVisita,
+  verificarGestorVisita,
+} from "../middlewares/ownershipMiddleware.js";
+import {
+  adicionarFiscalizadorSchema,
+  atualizarRespostaSchema,
+  atualizarVisitaSchema,
+  criarVisitaSchema,
+  iniciarVisitaSchema,
+  listarVisitasSchema,
+  observacoesVisitaSchema,
+  salvarRespostasSchema,
+  substituirFiscalizadoresSchema,
+} from "../middlewares/validationSchemas.js";
 
 const router = Router();
 
@@ -22,7 +31,7 @@ router.post(
   "/",
   autenticar,
   autorizar("admin", "gestor"),
-  validarCriacaoVisita,
+  validate(criarVisitaSchema),
   visitaController.criar
 );
 
@@ -30,7 +39,7 @@ router.get(
   "/",
   autenticar,
   autorizar("admin", "gestor", "fiscalizador"),
-  validarListagemVisitas,
+  validate(listarVisitasSchema),
   visitaController.listar
 );
 
@@ -39,6 +48,7 @@ router.get(
   autenticar,
   autorizar("admin", "gestor", "fiscalizador"),
   validarId,
+  verificarAcessoVisita,
   visitaController.buscarPorId
 );
 
@@ -47,7 +57,8 @@ router.put(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
-  validarAtualizacaoVisita,
+  validate(atualizarVisitaSchema),
+  verificarGestorVisita,
   visitaController.atualizar
 );
 
@@ -56,6 +67,7 @@ router.delete(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
+  verificarGestorVisita,
   visitaController.remover
 );
 
@@ -64,6 +76,7 @@ router.get(
   autenticar,
   autorizar("admin", "gestor", "fiscalizador"),
   validarId,
+  verificarAcessoVisita,
   visitaController.listarFiscalizadores
 );
 
@@ -72,6 +85,8 @@ router.post(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
+  validate(adicionarFiscalizadorSchema),
+  verificarGestorVisita,
   visitaController.adicionarFiscalizador
 );
 
@@ -80,6 +95,8 @@ router.put(
   autenticar,
   autorizar("admin", "gestor"),
   validarId,
+  validate(substituirFiscalizadoresSchema),
+  verificarGestorVisita,
   visitaController.substituirFiscalizadores
 );
 
@@ -89,6 +106,7 @@ router.delete(
   autorizar("admin", "gestor"),
   validarId,
   validarParametroId("fiscalizadorId"),
+  verificarGestorVisita,
   visitaController.removerFiscalizador
 );
 
@@ -97,6 +115,8 @@ router.patch(
   autenticar,
   autorizar("fiscalizador"),
   validarId,
+  validate(iniciarVisitaSchema),
+  verificarAcessoVisita,
   visitaController.iniciar
 );
 
@@ -105,7 +125,18 @@ router.patch(
   autenticar,
   autorizar("admin", "gestor", "fiscalizador"),
   validarId,
+  verificarAcessoVisita,
   visitaController.concluir
+);
+
+router.patch(
+  "/:id/observacoes",
+  autenticar,
+  autorizar("fiscalizador"),
+  validarId,
+  validate(observacoesVisitaSchema),
+  verificarAcessoVisita,
+  visitaController.salvarObservacoes
 );
 
 router.post(
@@ -113,7 +144,8 @@ router.post(
   autenticar,
   autorizar("fiscalizador"),
   validarId,
-  validarRespostasQuestionario,
+  validate(salvarRespostasSchema),
+  verificarAcessoVisita,
   questionarioController.salvarRespostas
 );
 
@@ -122,6 +154,7 @@ router.get(
   autenticar,
   autorizar("admin", "gestor", "fiscalizador"),
   validarId,
+  verificarAcessoVisita,
   questionarioController.listarRespostas
 );
 
@@ -131,6 +164,7 @@ router.get(
   autorizar("admin", "gestor", "fiscalizador"),
   validarId,
   validarIdParametro("respostaId"),
+  verificarAcessoVisita,
   questionarioController.buscarResposta
 );
 
@@ -140,7 +174,8 @@ router.put(
   autorizar("fiscalizador"),
   validarId,
   validarIdParametro("respostaId"),
-  validarAtualizacaoResposta,
+  validate(atualizarRespostaSchema),
+  verificarAcessoVisita,
   questionarioController.atualizarResposta
 );
 
@@ -150,6 +185,7 @@ router.delete(
   autorizar("fiscalizador"),
   validarId,
   validarIdParametro("respostaId"),
+  verificarAcessoVisita,
   questionarioController.removerResposta
 );
 
@@ -158,6 +194,7 @@ router.post(
   autenticar,
   autorizar("fiscalizador"),
   validarId,
+  verificarAcessoVisita,
   documentoController.gerar
 );
 

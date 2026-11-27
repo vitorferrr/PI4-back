@@ -1,6 +1,6 @@
 import "dotenv/config";
-import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 import { sequelize } from "./models/index.js";
 import usuarioRoutes from "./routes/usuarioRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -9,34 +9,22 @@ import questionarioRoutes from "./routes/questionarioRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import documentoRoutes from "./routes/documentoRoutes.js";
 import errorHandler from "./middlewares/errorHandler.js";
+import notFoundMiddleware from "./middlewares/notFound.js";
+import { limiterMiddleware } from "./middlewares/rateLimiter.js";
+import corsMiddleware from "./middlewares/cors.js";
 
 const app = express();
 
-app.use(
-  cors({
-    exposedHeaders: ["X-Total-Count", "X-Truncated", "Content-Disposition"],
-  })
-);
+app.set("trust proxy", 1);
+
+app.use(helmet());
+app.use(corsMiddleware);
+app.use(limiterMiddleware);
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
-app.use((erro, req, res, next) => {
-  if (erro.type === "entity.too.large") {
-    return res.status(413).json({
-      mensagem: "O corpo da requisição deve ter no máximo 1 MB",
-    });
-  }
-
-  if (erro.type === "entity.parse.failed") {
-    return res.status(400).json({
-      mensagem: "JSON inválido no corpo da requisição",
-    });
-  }
-
-  return next(erro);
-});
 app.use(async (req, res, next) => {
   try {
-    await ready;
+    await conectarBanco();
     next();
   } catch {
     return res.status(503).json({
@@ -56,21 +44,33 @@ app.get("/", (req, res) => {
   return res.send("Servidor express executando...");
 });
 
+app.use(notFoundMiddleware);
+
 app.use(errorHandler);
 
 const port = process.env.PORT || 3000;
 const eraseDatabaseOnSync =
   process.env.ERASE_DATABASE_ON_SYNC === "true" && !process.env.VERCEL;
 
-const ready = sequelize
-  .sync({ force: eraseDatabaseOnSync })
+let conexao;
+
+const conectarBanco = () => {
+  conexao ??= sequelize.sync({ force: eraseDatabaseOnSync }).catch((erro) => {
+    conexao = undefined;
+    console.error("Erro ao conectar com o banco de dados:", erro.message);
+    throw erro;
+  });
+
+  return conexao;
+};
+
+const ready = conectarBanco()
   .then(() => {
     if (!process.env.VERCEL) {
       app.listen(port, () => console.log(`Servidor rodando na porta ${port}!`));
     }
   })
   .catch((erro) => {
-    console.error("Erro ao conectar com o banco de dados:", erro.message);
     if (!process.env.VERCEL) process.exit(1);
     throw erro;
   });

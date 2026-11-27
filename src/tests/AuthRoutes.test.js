@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import authRoutes from "../routes/authRoutes.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import usuarioService from "../services/usuarioService.js";
+import errorHandler from "../middlewares/errorHandler.js";
 
 vi.mock("../models/index.js", () => {
   const revogados = new Set();
@@ -20,6 +21,10 @@ vi.mock("../models/index.js", () => {
   };
 });
 vi.mock("../services/usuarioService.js", () => ({ default: { criar: vi.fn() } }));
+// O limite de login (5 tentativas) tem teste próprio; aqui ele deixa tudo passar.
+vi.mock("../middlewares/rateLimiter.js", () => ({
+  authLimiterMiddleware: (req, res, next) => next(),
+}));
 
 const SEGREDO = "segredo-de-teste";
 const cadastro = { nome: "Ana", email: "ana@exemplo.com", senha: "senha-forte" };
@@ -57,6 +62,7 @@ beforeAll(async () => {
   app.use(express.json());
   app.use("/auth", authRoutes);
   app.post("/auth/protegida", autenticar, (req, res) => res.status(200).json({ ok: true }));
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -108,6 +114,8 @@ describe("POST /auth/signup", () => {
     });
   });
 
+  const OBRIGATORIOS = "Nome, email e senha são obrigatórios";
+
   it.each([
     [{ email: "ana@exemplo.com", senha: "senha-forte" }],
     [{ nome: "Ana", senha: "senha-forte" }],
@@ -119,10 +127,7 @@ describe("POST /auth/signup", () => {
     const resposta = await requisitar("/signup", corpo);
 
     expect(resposta.status).toBe(400);
-    expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao realizar cadastro",
-      erros: ["Nome, email e senha são obrigatórios"],
-    });
+    expect(await resposta.json()).toEqual({ mensagem: OBRIGATORIOS });
     expect(usuarioService.criar).not.toHaveBeenCalled();
   });
 
@@ -132,7 +137,9 @@ describe("POST /auth/signup", () => {
       const resposta = await requisitar("/signup", { ...cadastro, senha });
 
       expect(resposta.status).toBe(400);
-      expect((await resposta.json()).erros).toEqual(["A senha deve ter entre 8 e 72 caracteres"]);
+      expect(await resposta.json()).toEqual({
+        mensagem: "A senha deve ter entre 8 e 72 caracteres",
+      });
       expect(usuarioService.criar).not.toHaveBeenCalled();
     }
   );
@@ -182,8 +189,30 @@ describe("POST /auth/signup", () => {
     const resposta = await requisitar("/signup", cadastro);
 
     expect(resposta.status).toBe(500);
-    expect(await resposta.json()).toEqual({ mensagem: "Erro ao realizar cadastro" });
+    expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     consoleError.mockRestore();
+  });
+});
+
+describe("POST /auth/login (loginSchema)", () => {
+  it.each([[{}], [{ email: "ana@exemplo.com" }], [{ senha: "x" }], [{ email: "", senha: "x" }], [undefined]])(
+    "responde 400 sem chegar no service quando falta email ou senha (%#)",
+    async (corpo) => {
+      const resposta = await requisitar("/login", corpo);
+
+      expect(resposta.status).toBe(400);
+      expect((await resposta.json()).mensagem).toBe("Email e senha são obrigatórios");
+    }
+  );
+
+  it("com email e senha preenchidos, deixa o authService responder 401", async () => {
+    const { default: models } = await import("../models/index.js");
+    models.Usuario.findOne.mockResolvedValue(null);
+
+    const resposta = await requisitar("/login", { email: "ana@exemplo.com", senha: "errada" });
+
+    expect(resposta.status).toBe(401);
+    expect(await resposta.json()).toEqual({ mensagem: "Email ou senha inválidos" });
   });
 });
 

@@ -3,11 +3,12 @@ import usuarioController from "../controllers/usuarioController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 import validarId from "../middlewares/validarIdMiddleware.js";
+import validate from "../middlewares/validate.js";
 import {
-  validarAtualizacaoUsuario,
-  validarCriacaoUsuario,
-  validarListagemUsuarios,
-} from "../middlewares/validationMiddleware.js";
+  atualizarUsuarioSchema,
+  criarUsuarioSchema,
+  listarUsuariosSchema,
+} from "../middlewares/validationSchemas.js";
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.post(
   "/",
   autenticar,
   autorizar("admin"),
-  validarCriacaoUsuario,
+  validate(criarUsuarioSchema),
   usuarioController.criar
 );
 
@@ -24,7 +25,7 @@ router.get(
   "/",
   autenticar,
   autorizar("admin", "gestor"),
-  validarListagemUsuarios,
+  validate(listarUsuariosSchema),
   usuarioController.listar
 );
 
@@ -33,7 +34,7 @@ router.put(
   autenticar,
   autorizar("admin"),
   validarId,
-  validarAtualizacaoUsuario,
+  validate(atualizarUsuarioSchema),
   usuarioController.atualizar
 );
 
@@ -51,6 +52,14 @@ router.patch(
   autorizar("admin"),
   validarId,
   usuarioController.reprovar
+);
+
+router.post(
+  "/:id/reenviar-senha",
+  autenticar,
+  autorizar("admin"),
+  validarId,
+  usuarioController.reenviarSenha
 );
 
 router.delete(

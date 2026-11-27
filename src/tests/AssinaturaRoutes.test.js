@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import express from "express";
 import jwt from "jsonwebtoken";
 import documentoRoutes from "../routes/documentoRoutes.js";
+import errorHandler from "../middlewares/errorHandler.js";
 import assinaturaService from "../services/assinaturaService.js";
 import documentoService from "../services/documentoService.js";
 import { waitUntil } from "@vercel/functions";
@@ -12,8 +13,11 @@ vi.mock("../services/documentoService.js", () => ({
     gerar: vi.fn(),
     finalizar: vi.fn(),
     enviarEmail: vi.fn(),
+    gerarLinkPdf: vi.fn(),
   },
 }));
+
+vi.mock("../services/visitaService.js", () => ({ default: { buscarParaAcesso: vi.fn() } }));
 
 vi.mock("@vercel/functions", () => ({ waitUntil: vi.fn() }));
 
@@ -46,6 +50,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use("/documentos", documentoRoutes);
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -309,8 +314,7 @@ describe("POST /documentos/:id/assinaturas", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao registrar assinatura",
-      erros: ["Este fiscalizador já assinou o documento"],
+      mensagem: "Este fiscalizador já assinou o documento",
     });
   });
 
@@ -343,7 +347,74 @@ describe("POST /documentos/:id/assinaturas", () => {
     const resposta = await requisitar("/documentos/7/assinaturas");
 
     expect(resposta.status).toBe(500);
-    expect(await resposta.json()).toEqual({ mensagem: "Erro ao registrar assinatura" });
+    expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     consoleError.mockRestore();
+  });
+});
+
+describe("GET /documentos/:id/pdf", () => {
+  const abrirPdf = (caminho, role = "gestor", id = 2) =>
+    fetch(`${urlBase}${caminho}`, {
+      headers: { Authorization: `Bearer ${jwt.sign({ id, role }, SEGREDO)}` },
+    });
+
+  it.each(["admin", "gestor"])("devolve o link temporário para %s", async (role) => {
+    documentoService.gerarLinkPdf.mockResolvedValue({
+      gerado: true,
+      url: "https://exemplo.supabase.co/storage/v1/object/sign/documentos/a.pdf?token=x",
+      expira_em: "2026-11-26T15:05:00.000Z",
+    });
+
+    const resposta = await abrirPdf("/documentos/7/pdf", role, 2);
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual({
+      url: "https://exemplo.supabase.co/storage/v1/object/sign/documentos/a.pdf?token=x",
+      expira_em: "2026-11-26T15:05:00.000Z",
+    });
+    expect(documentoService.gerarLinkPdf).toHaveBeenCalledWith("7");
+  });
+
+  it("responde 403 para o fiscalizador, sem gerar link", async () => {
+    const resposta = await abrirPdf("/documentos/7/pdf", "fiscalizador", 5);
+
+    expect(resposta.status).toBe(403);
+    expect(documentoService.gerarLinkPdf).not.toHaveBeenCalled();
+  });
+
+  it("responde 404 quando o documento não existe", async () => {
+    documentoService.gerarLinkPdf.mockResolvedValue(null);
+
+    const resposta = await abrirPdf("/documentos/7/pdf");
+
+    expect(resposta.status).toBe(404);
+    expect(await resposta.json()).toEqual({ mensagem: "Documento não encontrado" });
+  });
+
+  it("responde 409 quando o PDF ainda não foi gerado", async () => {
+    documentoService.gerarLinkPdf.mockResolvedValue({ gerado: false });
+
+    const resposta = await abrirPdf("/documentos/7/pdf");
+
+    expect(resposta.status).toBe(409);
+    expect(await resposta.json()).toEqual({ mensagem: "O PDF deste documento ainda não foi gerado" });
+  });
+
+  it("responde 503 quando o armazenamento está indisponível", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    documentoService.gerarLinkPdf.mockRejectedValue(
+      Object.assign(new Error("x"), { name: "StorageError", codigo: "STORAGE_URL_ASSINADA_FALHOU" })
+    );
+
+    const resposta = await abrirPdf("/documentos/7/pdf");
+
+    expect(resposta.status).toBe(503);
+    consoleError.mockRestore();
+  });
+
+  it("responde 400 para id inválido e 401 sem token", async () => {
+    expect((await abrirPdf("/documentos/abc/pdf")).status).toBe(400);
+    expect((await fetch(`${urlBase}/documentos/7/pdf`)).status).toBe(401);
+    expect(documentoService.gerarLinkPdf).not.toHaveBeenCalled();
   });
 });

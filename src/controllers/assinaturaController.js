@@ -1,14 +1,12 @@
 import { waitUntil } from "@vercel/functions";
 import assinaturaService from "../services/assinaturaService.js";
 import documentoService from "../services/documentoService.js";
-import tratarErro from "../utils/tratarErro.js";
+import AppError from "../utils/appError.js";
 
 const ID_VALIDO = /^[1-9]\d{0,9}$/;
 
-const responderDocumentoNaoEncontrado = (res) =>
-  res.status(404).json({
-    mensagem: "Documento não encontrado",
-  });
+const erroDocumentoNaoEncontrado = () =>
+  new AppError("Documento não encontrado", 404);
 
 const mensagemDaFalha = (erro) => {
   if (erro.name === "ValidacaoError") return erro.message;
@@ -34,72 +32,56 @@ const finalizarDocumento = async (documentoId) => {
 };
 
 const registrar = async (req, res) => {
-  try {
-    const assinatura = await assinaturaService.registrar(req.params.id, req.body, req.usuario);
+  const assinatura = await assinaturaService.registrar(req.params.id, req.body, req.usuario);
 
-    if (!assinatura) return responderDocumentoNaoEncontrado(res);
+  if (!assinatura) throw erroDocumentoNaoEncontrado();
 
-    const { email_pendente: emailPendente, ...finalizacao } = await finalizarDocumento(
-      assinatura.documento_id
+  const { email_pendente: emailPendente, ...finalizacao } = await finalizarDocumento(
+    assinatura.documento_id
+  );
+
+  if (emailPendente) {
+    waitUntil(
+      documentoService.enviarEmail(assinatura.documento_id).catch((erro) =>
+        console.error("Falha no envio do e-mail após a assinatura:", erro.message)
+      )
     );
-
-    if (emailPendente) {
-      waitUntil(
-        documentoService.enviarEmail(assinatura.documento_id).catch((erro) =>
-          console.error("Falha no envio do e-mail após a assinatura:", erro.message)
-        )
-      );
-    }
-
-    const dados = assinatura.toJSON?.() ?? assinatura;
-
-    return res.status(201).json({
-      ...dados,
-      finalizacao: emailPendente ? { ...finalizacao, envio_email: "em_andamento" } : finalizacao,
-    });
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao registrar assinatura");
   }
+
+  const dados = assinatura.toJSON?.() ?? assinatura;
+
+  return res.status(201).json({
+    ...dados,
+    finalizacao: emailPendente ? { ...finalizacao, envio_email: "em_andamento" } : finalizacao,
+  });
 };
 
 const remover = async (req, res) => {
-  try {
-    if (!ID_VALIDO.test(req.params.assinaturaId)) {
-      return res.status(400).json({ mensagem: "Id inválido" });
-    }
-
-    const removida = await assinaturaService.remover(
-      Number(req.params.id),
-      Number(req.params.assinaturaId),
-      req.usuario
-    );
-
-    if (!removida) {
-      return res.status(404).json({ mensagem: "Assinatura não encontrada" });
-    }
-
-    return res.status(204).send();
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao remover assinatura");
+  if (!ID_VALIDO.test(req.params.assinaturaId)) {
+    throw new AppError("Id inválido", 400);
   }
+
+  const removida = await assinaturaService.remover(
+    Number(req.params.id),
+    Number(req.params.assinaturaId),
+    req.usuario
+  );
+
+  if (!removida) {
+    throw new AppError("Assinatura não encontrada", 404);
+  }
+
+  return res.status(204).send();
 };
 
 const finalizar = async (req, res) => {
+  let finalizacao;
+
   try {
-    const { email_pendente: emailPendente, ...resultado } =
-      (await documentoService.finalizar(Number(req.params.id), { usuario: req.usuario })) ?? {};
-
-    if (!resultado.situacao) return responderDocumentoNaoEncontrado(res);
-
-    if (emailPendente) {
-      const envio = await documentoService.enviarEmail(resultado.documento_id);
-
-      resultado.enviado_email = envio === "enviado";
-      if (envio === "em_andamento") resultado.envio_email = "em_andamento";
-    }
-
-    return res.status(200).json(resultado);
+    finalizacao = await documentoService.finalizar(Number(req.params.id), { usuario: req.usuario });
   } catch (erro) {
+    // O app usa o assinatura_id para pedir a assinatura de novo; o errorHandler
+    // global não conhece esse campo, então este caso é respondido aqui.
     if (erro.assinatura_id) {
       return res.status(400).json({
         mensagem: "Erro ao finalizar documento",
@@ -108,8 +90,21 @@ const finalizar = async (req, res) => {
       });
     }
 
-    return tratarErro(res, erro, "Erro ao finalizar documento");
+    throw erro;
   }
+
+  const { email_pendente: emailPendente, ...resultado } = finalizacao ?? {};
+
+  if (!resultado.situacao) throw erroDocumentoNaoEncontrado();
+
+  if (emailPendente) {
+    const envio = await documentoService.enviarEmail(resultado.documento_id);
+
+    resultado.enviado_email = envio === "enviado";
+    if (envio === "em_andamento") resultado.envio_email = "em_andamento";
+  }
+
+  return res.status(200).json(resultado);
 };
 
 export default {
