@@ -1,6 +1,5 @@
 import models, { sequelize } from "../models/index.js";
-import { validarListaRespostas } from "../utils/validarRespostas.js";
-import erroValidacao from "../utils/erroValidacao.js";
+import { erroValidacao, validarListaRespostas } from "../utils/index.js";
 
 const { Documento, PerguntaQuestionario, RespostaQuestionario, Visita } = models;
 

@@ -1,9 +1,7 @@
 import Sequelize from "sequelize";
 import models, { sequelize } from "../models/index.js";
-import { getStorageContext } from "../config/supabase.js";
-import { podeAcessarVisita } from "../utils/acessoVisita.js";
-import erroValidacao from "../utils/erroValidacao.js";
-import { validarImagemAssinatura } from "../utils/validarImagemAssinatura.js";
+import { getStorageContext } from "../config/index.js";
+import { erroValidacao, podeAcessarVisita, validarImagemAssinatura } from "../utils/index.js";
 import { enviarDocumentoVisita } from "./emailService.js";
 import pdfService from "./pdfService.js";
 import questionarioService from "./questionarioService.js";

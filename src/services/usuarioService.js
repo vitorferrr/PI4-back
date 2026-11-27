@@ -1,8 +1,6 @@
 import bcrypt from "bcrypt";
 import models, { sequelize } from "../models/index.js";
-import AppError from "../utils/appError.js";
-import gerarSenha from "../utils/gerarSenha.js";
-import normalizarEmail from "../utils/normalizarEmail.js";
+import { AppError, gerarSenha, normalizarEmail } from "../utils/index.js";
 import { enviarSenhaGerada } from "./emailService.js";
 
 const { Usuario } = models;

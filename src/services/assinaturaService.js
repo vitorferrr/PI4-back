@@ -1,9 +1,11 @@
 import models, { sequelize } from "../models/index.js";
-import { getStorageContext } from "../config/supabase.js";
-import { podeAcessarVisita } from "../utils/acessoVisita.js";
-import emailValido from "../utils/emailValido.js";
-import erroValidacao from "../utils/erroValidacao.js";
-import { validarImagemAssinatura } from "../utils/validarImagemAssinatura.js";
+import { getStorageContext } from "../config/index.js";
+import {
+  emailValido,
+  erroValidacao,
+  podeAcessarVisita,
+  validarImagemAssinatura,
+} from "../utils/index.js";
 import { removerArquivo, uploadArquivo } from "./storageService.js";
 
 const { Assinatura, Documento, Usuario, Visita } = models;

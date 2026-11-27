@@ -1,11 +1,12 @@
 import { Router } from "express";
-import assinaturaController from "../controllers/assinaturaController.js";
-import documentoController from "../controllers/documentoController.js";
-import autenticar from "../middlewares/authMiddleware.js";
-import autorizar from "../middlewares/roleMiddleware.js";
-import validarId from "../middlewares/validarIdMiddleware.js";
-import validate from "../middlewares/validate.js";
-import { registrarAssinaturaSchema } from "../middlewares/validationSchemas.js";
+import { assinaturaController, documentoController } from "../controllers/index.js";
+import {
+  autenticar,
+  autorizar,
+  registrarAssinaturaSchema,
+  validarId,
+  validate,
+} from "../middlewares/index.js";
 
 const router = Router();
 

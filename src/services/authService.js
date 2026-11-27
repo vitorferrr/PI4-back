@@ -2,10 +2,9 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcrypt";
 import Sequelize from "sequelize";
 import jwt from "jsonwebtoken";
+import { env } from "../config/index.js";
 import models from "../models/index.js";
-import AppError from "../utils/appError.js";
-import erroValidacao from "../utils/erroValidacao.js";
-import normalizarEmail from "../utils/normalizarEmail.js";
+import { AppError, erroValidacao, normalizarEmail } from "../utils/index.js";
 import usuarioService from "./usuarioService.js";
 
 const { TokenRevogado, Usuario } = models;
@@ -24,7 +23,7 @@ const erroEmailCadastrado = () => new AppError("Email já cadastrado", 409);
 const abrirSessao = (usuario) => {
   const token = jwt.sign(
     { id: usuario.id, role: usuario.role },
-    process.env.JWT_SECRET,
+    env.JWT_SECRET,
     { expiresIn: "1h", jwtid: randomUUID() }
   );
 

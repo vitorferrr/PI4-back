@@ -26,6 +26,9 @@ const requisitar = async (app, caminho) => {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
+  // DT-35: obrigatórias para o servidor subir
+  vi.stubEnv("DATABASE_URL", "postgres://teste:teste@localhost:5432/teste");
+  vi.stubEnv("JWT_SECRET", "segredo-de-teste-com-pelo-menos-32-caracteres");
 });
 
 afterEach(async () => {
@@ -220,5 +223,70 @@ describe("inicialização local", () => {
     await carregarApp();
 
     expect(sync).toHaveBeenCalledWith({ force: true });
+  });
+});
+
+describe("variáveis de ambiente na subida (DT-35)", () => {
+  const mensagensDoConsole = () => console.error.mock.calls.map((args) => args.join(" ")).join("\n");
+
+  it("na Vercel, sem DATABASE_URL, responde 503 em toda rota e não tenta conectar no banco", async () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("DATABASE_URL", "");
+    const app = await carregarApp();
+
+    const resposta = await requisitar(app, "/visitas/1");
+
+    expect(resposta.status).toBe(503);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Servidor com configuração incompleta. Avise o responsável pelo deploy.",
+    });
+    expect(sync).not.toHaveBeenCalled();
+    expect(mensagensDoConsole()).toContain("- DATABASE_URL: é obrigatória");
+  });
+
+  it("local, sem JWT_SECRET, mostra o que falta e encerra com código 1 sem conectar no banco", async () => {
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("JWT_SECRET", "   ");
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {});
+
+    await carregarApp();
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(sync).not.toHaveBeenCalled();
+    expect(mensagensDoConsole()).toContain("Variáveis de ambiente ausentes ou inválidas:");
+    expect(mensagensDoConsole()).toContain("- JWT_SECRET: é obrigatória");
+  });
+
+  it("local, com PORT inválida, encerra com código 1", async () => {
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("PORT", "porta");
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {});
+
+    await carregarApp();
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(mensagensDoConsole()).toContain("- PORT: deve ser um número de porta entre 1 e 65535");
+  });
+
+  it("não mostra o valor da variável inválida no log", async () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("DATABASE_URL", "mysql://usuario:senhaSecreta@servidor/banco");
+    await carregarApp();
+
+    expect(mensagensDoConsole()).toContain("- DATABASE_URL: deve ser uma URL do Postgres");
+    expect(mensagensDoConsole()).not.toContain("senhaSecreta");
+  });
+
+  it("sobe normalmente sem Supabase e sem SMTP, que continuam opcionais", async () => {
+    vi.stubEnv("VERCEL", "1");
+    for (const chave of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "SMTP_HOST", "SMTP_USER", "SMTP_PASS"]) {
+      vi.stubEnv(chave, "");
+    }
+    sync.mockResolvedValue();
+    const app = await carregarApp();
+
+    const resposta = await requisitar(app, "/");
+
+    expect(resposta.status).toBe(200);
   });
 });

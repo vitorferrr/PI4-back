@@ -1,4 +1,4 @@
-import campoTextoOpcional from "../utils/campoTextoOpcional.js";
+import { campoTextoOpcional } from "../utils/index.js";
 
 const getUsuarioModel = (sequelize, { DataTypes }) => {
   const Usuario = sequelize.define(

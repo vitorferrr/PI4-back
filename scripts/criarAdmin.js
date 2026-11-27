@@ -1,10 +1,11 @@
 // Cria o primeiro usuário admin (POST /usuarios exige um admin já logado).
 // Uso: preencha ADMIN_NOME, ADMIN_EMAIL e ADMIN_SENHA no .env e rode `npm run seed:admin`.
 import "dotenv/config";
+import { env } from "../src/config/index.js";
 import models, { sequelize } from "../src/models/index.js";
-import usuarioService from "../src/services/usuarioService.js";
+import { usuarioService } from "../src/services/index.js";
 
-const { ADMIN_NOME, ADMIN_EMAIL, ADMIN_SENHA } = process.env;
+const { ADMIN_NOME, ADMIN_EMAIL, ADMIN_SENHA } = env;
 
 if (!ADMIN_NOME || !ADMIN_EMAIL || !ADMIN_SENHA) {
   console.error("Defina ADMIN_NOME, ADMIN_EMAIL e ADMIN_SENHA no .env");

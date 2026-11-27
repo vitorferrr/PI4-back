@@ -1,8 +1,9 @@
 import cors from "cors";
-import AppError from "../utils/appError.js";
+import { env } from "../config/index.js";
+import { AppError } from "../utils/index.js";
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+const allowedOrigins = env.ALLOWED_ORIGINS
+  ? env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
   : ["http://localhost:8081"];
 
 const CORS_EXPOSED_HEADERS = [
