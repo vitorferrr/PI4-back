@@ -3,7 +3,7 @@ import { env, validarEnv } from "../config/env.js";
 
 const obrigatorias = {
   DATABASE_URL: "postgresql://usuario:senha@localhost:5432/pi4?sslmode=no-verify",
-  JWT_SECRET: "segredo-de-teste",
+  JWT_SECRET: "segredo-de-teste-com-pelo-menos-32-caracteres",
 };
 
 const erroDe = (fonte) => {
@@ -88,7 +88,7 @@ describe("validarEnv", () => {
     });
 
     expect(resultado.SUPABASE_URL).toBe("https://projeto.supabase.co");
-    expect(resultado.SMTP_PORT).toBe("587");
+    expect(resultado.SMTP_PORT).toBe(587);
     expect(resultado.SMTP_HOST).toBeUndefined();
   });
 });
@@ -119,5 +119,47 @@ describe("env", () => {
       "use strict";
       env.JWT_SECRET = "outro";
     }).toThrow();
+  });
+});
+
+describe("revisão da PR: JWT_SECRET e SMTP_PORT", () => {
+  it("recusa na subida um JWT_SECRET com menos de 32 caracteres, sem mostrar o valor", () => {
+    const erro = erroDe({ ...obrigatorias, JWT_SECRET: "segredo-curto" });
+
+    expect(erro.problemas).toEqual(["- JWT_SECRET: deve ter pelo menos 32 caracteres"]);
+    expect(erro.message).not.toContain("segredo-curto");
+  });
+
+  it("mostra o segredo curto junto com os outros problemas, e não só depois de corrigi-los", () => {
+    const erro = erroDe({ ...obrigatorias, JWT_SECRET: "segredo-curto", SMTP_PORT: "465a" });
+
+    expect(erro.problemas).toEqual([
+      "- SMTP_PORT: deve ser um número de porta entre 1 e 65535",
+      "- JWT_SECRET: deve ter pelo menos 32 caracteres",
+    ]);
+  });
+
+  it("aceita JWT_SECRET com exatamente 32 caracteres", () => {
+    expect(validarEnv({ ...obrigatorias, JWT_SECRET: "a".repeat(32) }).JWT_SECRET).toBe("a".repeat(32));
+  });
+
+  it("JWT_SECRET vazio continua dizendo só que é obrigatório", () => {
+    expect(erroDe({ ...obrigatorias, JWT_SECRET: "  " }).problemas).toEqual(["- JWT_SECRET: é obrigatória"]);
+  });
+
+  it("depois da subida, env.JWT_SECRET lê o valor mesmo curto (a regra de tamanho é só na subida)", () => {
+    vi.stubEnv("JWT_SECRET", "curto");
+    expect(env.JWT_SECRET).toBe("curto");
+  });
+
+  it("SMTP_PORT vira número, usa 465 quando ausente e recusa valor inválido na subida", () => {
+    expect(validarEnv(obrigatorias).SMTP_PORT).toBe(465);
+    expect(validarEnv({ ...obrigatorias, SMTP_PORT: " 587 " }).SMTP_PORT).toBe(587);
+
+    for (const SMTP_PORT of ["465a", "0", "70000"]) {
+      expect(erroDe({ ...obrigatorias, SMTP_PORT }).problemas).toEqual([
+        "- SMTP_PORT: deve ser um número de porta entre 1 e 65535",
+      ]);
+    }
   });
 });

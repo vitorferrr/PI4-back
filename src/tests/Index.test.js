@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   // DT-35: obrigatórias para o servidor subir
   vi.stubEnv("DATABASE_URL", "postgres://teste:teste@localhost:5432/teste");
-  vi.stubEnv("JWT_SECRET", "segredo-de-teste");
+  vi.stubEnv("JWT_SECRET", "segredo-de-teste-com-pelo-menos-32-caracteres");
 });
 
 afterEach(async () => {

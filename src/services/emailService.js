@@ -17,7 +17,7 @@ const erroEmail = (codigo, mensagem) => {
 
 const lerConfiguracao = () => {
   const host = env.SMTP_HOST;
-  const porta = Number(env.SMTP_PORT || 465);
+  const porta = env.SMTP_PORT;
   const usuario = env.SMTP_USER;
   const senha = env.SMTP_PASS;
   const remetente = env.EMAIL_REMETENTE || usuario;

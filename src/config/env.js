@@ -13,6 +13,9 @@ import { z } from "zod";
 
 const MENSAGEM_OBRIGATORIA = "é obrigatória";
 const MENSAGEM_PORTA = "deve ser um número de porta entre 1 e 65535";
+// Segredo curto pode ser descoberto por força bruta a partir de um token,
+// e com ele dá para forjar tokens de qualquer perfil.
+const TAMANHO_MINIMO_JWT_SECRET = 32;
 
 const textoObrigatorio = () =>
   z
@@ -68,7 +71,7 @@ export const esquemaEnv = z.object({
 
   // INT-03: e-mail (opcional; validado em services/emailService.js ao ser usado)
   SMTP_HOST: textoOpcional(),
-  SMTP_PORT: textoOpcional(),
+  SMTP_PORT: porta(465),
   SMTP_USER: textoOpcional(),
   SMTP_PASS: textoOpcional(),
   EMAIL_REMETENTE: textoOpcional(),
@@ -81,6 +84,17 @@ export const esquemaEnv = z.object({
   ADMIN_SENHA: z.string().optional(),
 });
 
+// O tamanho mínimo do JWT_SECRET é conferido só na subida (validarEnv), fora do
+// schema: assim env.JWT_SECRET continua lendo o valor depois que o servidor subiu,
+// e o aviso aparece junto com os outros problemas (uma regra no objeto inteiro do
+// Zod não roda quando algum campo já falhou).
+const problemasDoSegredo = (fonte) => {
+  const segredo = fonte.JWT_SECRET;
+  return typeof segredo === "string" && segredo.trim() && segredo.length < TAMANHO_MINIMO_JWT_SECRET
+    ? [`- JWT_SECRET: deve ter pelo menos ${TAMANHO_MINIMO_JWT_SECRET} caracteres`]
+    : [];
+};
+
 const campos = esquemaEnv.shape;
 
 // Nunca inclui o valor da variável na mensagem, para não vazar segredos no log.
@@ -89,10 +103,13 @@ const descreverProblemas = (erro) =>
 
 export const validarEnv = (fonte = process.env) => {
   const resultado = esquemaEnv.safeParse(fonte);
+  const problemas = [
+    ...(resultado.success ? [] : descreverProblemas(resultado.error)),
+    ...problemasDoSegredo(fonte),
+  ];
 
-  if (resultado.success) return resultado.data;
+  if (problemas.length === 0) return resultado.data;
 
-  const problemas = descreverProblemas(resultado.error);
   const erro = new Error(
     [
       "Variáveis de ambiente ausentes ou inválidas:",

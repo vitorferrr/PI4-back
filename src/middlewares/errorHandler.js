@@ -1,8 +1,7 @@
 import { ZodError } from "zod";
 import { env } from "../config/index.js";
-import { AppError, criarErroHttp, responderErro, tratarRespostaErro } from "../utils/index.js";
+import { AppError, responderErro, tratarRespostaErro } from "../utils/index.js";
 
-export { criarErroHttp, responderErro, tratarRespostaErro };
 
 const mensagemDoZod = (erro) =>
   [...new Set((erro.issues || erro.errors || []).map((e) => e.message))].join("; ");
