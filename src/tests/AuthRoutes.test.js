@@ -21,6 +21,10 @@ vi.mock("../models/index.js", () => {
   };
 });
 vi.mock("../services/usuarioService.js", () => ({ default: { criar: vi.fn() } }));
+// O limite de login (5 tentativas) tem teste próprio; aqui ele deixa tudo passar.
+vi.mock("../middlewares/rateLimiter.js", () => ({
+  authLimiterMiddleware: (req, res, next) => next(),
+}));
 
 const SEGREDO = "segredo-de-teste";
 const cadastro = { nome: "Ana", email: "ana@exemplo.com", senha: "senha-forte" };

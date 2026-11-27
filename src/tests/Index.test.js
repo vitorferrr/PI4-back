@@ -42,8 +42,6 @@ describe("inicialização na Vercel", () => {
     vi.stubEnv("VERCEL", "1");
   });
 
-  // Primeiro teste do arquivo: carrega o back inteiro do zero (rotas, Zod, Helmet...).
-  // Com todos os arquivos de teste rodando em paralelo, isso pode passar dos 5 s padrão.
   it("responde normalmente quando o banco conecta", { timeout: 20000 }, async () => {
     sync.mockResolvedValue();
     const app = await carregarApp();
@@ -75,6 +73,20 @@ describe("inicialização na Vercel", () => {
     expect(resposta.headers.get("content-security-policy")).toBeTruthy();
     expect(resposta.headers.get("x-content-type-options")).toBe("nosniff");
     expect(resposta.headers.get("x-powered-by")).toBeNull();
+  });
+
+  it("confia no proxy da Vercel e liga o CORS e o limite geral antes das rotas", async () => {
+    sync.mockResolvedValue();
+    const app = await carregarApp();
+    await requisitar(app, "/");
+    const url = `http://127.0.0.1:${servidor.address().port}/usuarios`;
+
+    const liberada = await fetch(`http://127.0.0.1:${servidor.address().port}/`);
+    const barrada = await fetch(url, { headers: { Origin: "https://site-malicioso.com" } });
+
+    expect(app.get("trust proxy")).toBe(1);
+    expect(liberada.headers.get("ratelimit-policy")).toBe("500;w=900");
+    expect(barrada.status).toBe(403);
   });
 
   it.each(["/", "/usuarios", "/visitas/1", "/auth/login"])(
