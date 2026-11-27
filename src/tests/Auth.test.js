@@ -400,31 +400,47 @@ describe("middleware autenticar com logout", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("no logout, token já encerrado responde 204 sem passar adiante", async () => {
+  // DT-38: no logout o pedido segue para o controller mesmo com o access token já
+  // encerrado ou vencido, para revogar o refresh token enviado no corpo.
+  it("no logout, token já encerrado segue para o controller, sem consultar a lista de revogados", async () => {
     TokenRevogado.findOne.mockResolvedValue({ id: 1 });
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const req = requisicaoCom(token);
     const res = criarRes();
-    res.send = vi.fn(() => res);
     const next = vi.fn();
 
-    await autenticarLogout(requisicaoCom(token), res, next);
+    await autenticarLogout(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(204);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+    expect(req.usuario).toMatchObject({ id: 1, jti: "abc" });
   });
 
-  it("no logout, token vencido pelo tempo responde 204 sem consultar o banco", async () => {
+  it("no logout, token vencido pelo tempo segue para o controller com o usuário do token", async () => {
     const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, SEGREDO, {
       jwtid: "abc",
     });
+    const req = requisicaoCom(token);
     const res = criarRes();
-    res.send = vi.fn(() => res);
+    const next = vi.fn();
+
+    await autenticarLogout(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+    expect(req.usuario).toMatchObject({ id: 1, role: "admin" });
+  });
+
+  it("no logout, token vencido com assinatura falsa continua respondendo 401", async () => {
+    const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, "outro-segredo");
+    const res = criarRes();
     const next = vi.fn();
 
     await autenticarLogout(requisicaoCom(token), res, next);
 
-    expect(res.status).toHaveBeenCalledWith(204);
-    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -487,6 +503,24 @@ describe("logout (authService)", () => {
         },
       }
     );
+  });
+
+  it("só revoga refresh token do próprio usuário do access token", async () => {
+    await authService.logout({ id: 7, jti: "abc", exp: 1_900_000_000 }, "refresh-do-cliente");
+
+    expect(RefreshToken.update).toHaveBeenCalledWith(
+      { revogado_em: expect.any(Date) },
+      { where: expect.objectContaining({ usuario_id: 7 }) }
+    );
+  });
+
+  it("token já vencido não entra na lista de revogados, mas o refresh é revogado", async () => {
+    const venceuHaUmMinuto = Math.floor(Date.now() / 1000) - 60;
+
+    await authService.logout({ id: 7, jti: "abc", exp: venceuHaUmMinuto }, "refresh-do-cliente");
+
+    expect(TokenRevogado.bulkCreate).not.toHaveBeenCalled();
+    expect(RefreshToken.update).toHaveBeenCalledTimes(1);
   });
 
   it("não chama o RefreshToken quando nenhum refresh token é informado", async () => {

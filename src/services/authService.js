@@ -193,8 +193,9 @@ const signup = async (dados = {}) => {
 const tokenRevogado = async (jti) =>
   Boolean(await TokenRevogado.findOne({ attributes: ["id"], where: { jti } }));
 
-const logout = async ({ jti, exp } = {}, refreshTokenRecebido) => {
-  if (jti) {
+const logout = async ({ id, jti, exp } = {}, refreshTokenRecebido) => {
+  // token já vencido não precisa entrar na lista de revogados: não vale mais nada
+  if (jti && exp * 1000 > Date.now()) {
     await TokenRevogado.bulkCreate(
       [{ jti, expira_em: new Date(exp * 1000) }],
       { ignoreDuplicates: true }
@@ -215,6 +216,8 @@ const logout = async ({ jti, exp } = {}, refreshTokenRecebido) => {
           token_hash: hashToken(refreshTokenRecebido),
           usado_em: null,
           revogado_em: null,
+          // só revoga refresh token do próprio usuário do access token
+          ...(id !== undefined && { usuario_id: id }),
         },
       }
     );

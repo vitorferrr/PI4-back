@@ -326,6 +326,33 @@ describe("POST /auth/logout", () => {
     expect((await requisitar("/logout", undefined, token)).status).toBe(401);
   });
 
+  it("com o access token vencido, ainda revoga o refresh token do corpo (do próprio usuário)", async () => {
+    const vencido = jwt.sign(
+      { id: 9, role: "fiscalizador", exp: Math.floor(Date.now() / 1000) - 60 },
+      SEGREDO,
+      { jwtid: randomUUID() }
+    );
+
+    const resposta = await requisitar("/logout", { refreshToken: "refresh-do-cliente" }, vencido);
+
+    expect(resposta.status).toBe(204);
+    expect(RefreshToken.update).toHaveBeenCalledWith(
+      { revogado_em: expect.any(Date) },
+      expect.objectContaining({ where: expect.objectContaining({ usuario_id: 9 }) })
+    );
+  });
+
+  it("repetindo o logout (access token já encerrado), ainda revoga o refresh token do corpo", async () => {
+    const token = novaSessao();
+    await requisitar("/logout", undefined, token);
+    RefreshToken.update.mockClear();
+
+    const repeticao = await requisitar("/logout", { refreshToken: "refresh-do-cliente" }, token);
+
+    expect(repeticao.status).toBe(204);
+    expect(RefreshToken.update).toHaveBeenCalledTimes(1);
+  });
+
   it("revoga o refresh token enviado no corpo", async () => {
     const token = novaSessao();
 

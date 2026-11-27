@@ -6,7 +6,13 @@ import authService from "../services/authService.js";
 const bancoIndisponivel = (erro) =>
   erro instanceof Sequelize.ConnectionError || erro instanceof Sequelize.TimeoutError;
 
-const criarAutenticacao = ({ aoEncontrarSessaoEncerrada, aoEncontrarTokenVencido }) => async (req, res, next) => {
+// aceitarTokenVencido / aceitarSessaoEncerrada: usados só no logout. A assinatura
+// continua sendo conferida (o jwt.verify checa a assinatura antes da validade).
+const criarAutenticacao = ({
+  aoEncontrarSessaoEncerrada,
+  aceitarTokenVencido = false,
+  aceitarSessaoEncerrada = false,
+}) => async (req, res, next) => {
   const authorization = req.headers.authorization;
 
   if (!authorization) {
@@ -22,18 +28,14 @@ const criarAutenticacao = ({ aoEncontrarSessaoEncerrada, aoEncontrarTokenVencido
   let payload;
 
   try {
-    payload = jwt.verify(token, process.env.JWT_SECRET);
+    payload = jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: aceitarTokenVencido });
   } catch (erro) {
-    if (erro.name === "TokenExpiredError" && aoEncontrarTokenVencido) {
-      return aoEncontrarTokenVencido(res);
-    }
-
     console.error(erro);
 
     return responderErro(res, 401, "Token inválido ou expirado");
   }
 
-  if (payload.jti) {
+  if (payload.jti && !aceitarSessaoEncerrada) {
     let revogado;
 
     try {
@@ -60,11 +62,13 @@ const autenticar = criarAutenticacao({
   aoEncontrarSessaoEncerrada: (res) => responderErro(res, 401, "Sessão encerrada"),
 });
 
-const sessaoJaTerminada = (res) => res.status(204).send();
-
+// DT-38: o access token dura só 15 min, então a maior parte dos logouts chega com
+// ele vencido (ou já encerrado por um logout anterior). Mesmo assim o pedido segue
+// para o controller, que revoga o refresh token enviado no corpo; antes, a resposta
+// era 204 direto e o refresh continuava valendo por 30 dias.
 export const autenticarLogout = criarAutenticacao({
-  aoEncontrarSessaoEncerrada: sessaoJaTerminada,
-  aoEncontrarTokenVencido: sessaoJaTerminada,
+  aceitarTokenVencido: true,
+  aceitarSessaoEncerrada: true,
 });
 
 export default autenticar;
