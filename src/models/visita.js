@@ -84,7 +84,7 @@ const getVisitaModel = (sequelize, { DataTypes }) => {
       through: models.VisitaFiscalizador,
       foreignKey: "visita_id",
       otherKey: "fiscalizador_id",
-      as: "fiscalizadores",
+      as: { singular: "fiscalizador", plural: "fiscalizadores" },
     });
 
     Visita.hasMany(models.RespostaQuestionario, {

@@ -1,0 +1,2332 @@
+{
+  "info": {
+    "name": "PI4-back · Constata",
+    "description": "Rotas da API do Constata. Preencha adminEmail e adminSenha no environment e execute as pastas na ordem (1 a 8). Os registros de teste levam o prefixo [Postman].",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://pi4-back-one.vercel.app"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "tokenFiscal",
+      "value": ""
+    },
+    {
+      "key": "tokenSaida",
+      "value": ""
+    },
+    {
+      "key": "refreshSaida",
+      "value": ""
+    },
+    {
+      "key": "usuarioId",
+      "value": ""
+    },
+    {
+      "key": "visitaId",
+      "value": ""
+    },
+    {
+      "key": "perguntaId",
+      "value": ""
+    },
+    {
+      "key": "respostaId",
+      "value": ""
+    },
+    {
+      "key": "fiscalizadorId",
+      "value": ""
+    },
+    {
+      "key": "fiscalizador2Id",
+      "value": ""
+    },
+    {
+      "key": "visitaExecId",
+      "value": ""
+    },
+    {
+      "key": "documentoId",
+      "value": ""
+    },
+    {
+      "key": "assinaturaId",
+      "value": ""
+    },
+    {
+      "key": "fiscalEmail",
+      "value": ""
+    },
+    {
+      "key": "fiscal2Email",
+      "value": ""
+    },
+    {
+      "key": "emailUsado",
+      "value": ""
+    },
+    {
+      "key": "dataAgendada",
+      "value": ""
+    },
+    {
+      "key": "respostasJson",
+      "value": ""
+    },
+    {
+      "key": "respostaNova",
+      "value": ""
+    },
+    {
+      "key": "senhaTeste",
+      "value": "SenhaDeTeste123"
+    },
+    {
+      "key": "assinaturaPng",
+      "value": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAABaCAYAAACG0tsaAAAB40lEQVR42u3dsZECMRAF0Q0Cm0jIPy2RAN5SBT3zjA6g76udK6S9zjkXgCb+CICAAQgYgIABAQMQMAABAxAwIGAAAgYgYEDAAAQMQMAABAwIGICAAQj4Po/n6/DlK+DwwJtG5ivgkQNvGZmvgMcOvGFkvgIePfD0kfnO9l35n7tPI08emu9c37X/fneo+QrYyHz5CtjIfPkK2Mh81/kK2MHmK2Aj8+UrYCPz5StgI/Pd4itWh5pv2FeoDjbfsK9AHWq+YV8Xqh1qvmFfF6odar5hXxeqHWq+YV/3MR1svmFfI/PlG/Y1Ml++YV8j8+Ub9jUyX75h35+KTx2bL99xv8QyMl++8Z9SGpkv3/hvoY3Ml2/8MoOR+fIdchvJfzL58o1fJzQyX77x+8BG5ss3fqHfyHz5xl/kMDJfX0sc8KSOofn68Hj8TSyHmu9E31WP2jnUfKf5rnuV0qHmi/izsg41Xwx4F9rB5ov4w+4ONV/Ev8zgUPNF/NMqDjVfARuZL18BG5ovXwEbmS/fzZ8Xdaj5CtjIfPkK2Mh8+Qr4q0Pz5StgdzH58hVw/S4mX74CDt/F5MtXwAAEDAgYgIABCBiAgAEBAxAwAAEDEDAgYAACBiBgQMAABAxAwAAEDAgYwD/xBrXQDvsryIC1AAAAAElFTkSuQmCC"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "description": "Execute primeiro: salva o token do admin e cria o fiscal usado nas outras pastas.",
+      "item": [
+        {
+          "name": "Servidor no ar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": []
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login (admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"senha\": \"{{adminSenha}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Preencha adminEmail e adminSenha no environment."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.collectionVariables.set(\"token\", pm.response.json().token);",
+                  "pm.collectionVariables.set(\"refreshToken\", pm.response.json().refreshToken);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Renovar sessão (refresh)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"token\", pm.response.json().token);",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"refreshToken\", pm.response.json().refreshToken);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Fiscal · Cadastro público (signup)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "signup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"[Postman] Fiscal 1\",\n  \"email\": \"{{fiscalEmail}}\",\n  \"senha\": \"{{senhaTeste}}\",\n  \"matricula\": \"PM-001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"fiscalEmail\", `postman.fiscal.${Date.now()}@example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"fiscalizadorId\", pm.response.json().usuario.id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Fiscal · Admin aprova o cadastro",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios/{{fiscalizadorId}}/aprovar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{fiscalizadorId}}",
+                "aprovar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login (fiscalizador)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{fiscalEmail}}\",\n  \"senha\": \"{{senhaTeste}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"tokenFiscal\", pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login de uma sessão para encerrar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{fiscalEmail}}\",\n  \"senha\": \"{{senhaTeste}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"tokenSaida\", pm.response.json().token);",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"refreshSaida\", pm.response.json().refreshToken);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshSaida}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSaida}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Encerra só a sessão criada na requisição anterior."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.expect(pm.response.code).to.be.oneOf([204]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Rota protegida depois do logout (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSaida}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.expect(pm.response.code).to.be.oneOf([401]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Usuários",
+      "description": "CRUD completo de usuários (admin). O POST envia a senha para {{emailNovoUsuario}}.",
+      "item": [
+        {
+          "name": "Criar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"[Postman] Usuário de teste\",\n  \"email\": \"{{emailUsado}}\",\n  \"role\": \"fiscalizador\",\n  \"matricula\": \"PM-100\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A senha é gerada pelo servidor e enviada por e-mail. Se o e-mail já existir, a resposta é 400."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const informado = pm.environment.get(\"emailNovoUsuario\");",
+                  "pm.collectionVariables.set(\"emailUsado\", informado || `postman.usuario.${Date.now()}@example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"usuarioId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Listar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Buscar por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios/{{usuarioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{usuarioId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Atualizar",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios/{{usuarioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{usuarioId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"[Postman] Usuário atualizado\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Reprovar (bloquear)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios/{{usuarioId}}/reprovar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{usuarioId}}",
+                "reprovar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Aprovar",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios/{{usuarioId}}/aprovar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{usuarioId}}",
+                "aprovar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Reenviar senha",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios/{{usuarioId}}/reenviar-senha",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{usuarioId}}",
+                "reenviar-senha"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Excluir",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios/{{usuarioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{usuarioId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Perguntas",
+      "description": "CRUD completo do questionário. A pergunta criada é excluída no final.",
+      "item": [
+        {
+          "name": "Criar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/questionario",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "questionario"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"texto\": \"[Postman] Há preços visíveis?\",\n  \"tipo_resposta\": \"sim_nao\",\n  \"ordem\": 99\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"perguntaId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Listar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/questionario",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "questionario"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Buscar por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/questionario/{{perguntaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "questionario",
+                "{{perguntaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Atualizar",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/questionario/{{perguntaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "questionario",
+                "{{perguntaId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"texto\": \"[Postman] Os preços estão visíveis?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Excluir",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/questionario/{{perguntaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "questionario",
+                "{{perguntaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.expect(pm.response.code).to.be.oneOf([204]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Visitas",
+      "description": "CRUD completo de visitas.",
+      "item": [
+        {
+          "name": "Criar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"denunciado\": \"[Postman] Mercado Exemplo\",\n  \"razao_social\": \"Mercado Exemplo LTDA\",\n  \"nome_fantasia\": \"Mercado Exemplo\",\n  \"cnpj_cpf\": \"12.345.678/0001-90\",\n  \"bairro\": \"Piedade\",\n  \"data_agendada\": \"{{dataAgendada}}\",\n  \"fiscalizadores_ids\": [{{fiscalizadorId}}]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"dataAgendada\", new Date(Date.now() + 86400000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"visitaId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Listar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "agendada",
+                  "disabled": true
+                },
+                {
+                  "key": "fiscalizador_id",
+                  "value": "{{fiscalizadorId}}",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Buscar por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Atualizar",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"denunciado\": \"[Postman] Mercado atualizado\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Excluir",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 ou 204\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Visita ↔ Fiscalizadores",
+      "description": "Relacionamento entre visita e fiscal. Cada visita tem exatamente um.",
+      "item": [
+        {
+          "name": "Preparação (2º fiscal) · Cadastro público (signup)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "signup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"[Postman] Fiscal 2\",\n  \"email\": \"{{fiscal2Email}}\",\n  \"senha\": \"{{senhaTeste}}\",\n  \"matricula\": \"PM-001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"fiscal2Email\", `postman.fiscal2.${Date.now()}@example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"fiscalizador2Id\", pm.response.json().usuario.id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Preparação (2º fiscal) · Admin aprova o cadastro",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios/{{fiscalizador2Id}}/aprovar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{fiscalizador2Id}}",
+                "aprovar"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Preparação · Criar visita",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"denunciado\": \"[Postman] Mercado Exemplo\",\n  \"razao_social\": \"Mercado Exemplo LTDA\",\n  \"nome_fantasia\": \"Mercado Exemplo\",\n  \"cnpj_cpf\": \"12.345.678/0001-90\",\n  \"bairro\": \"Piedade\",\n  \"data_agendada\": \"{{dataAgendada}}\",\n  \"fiscalizadores_ids\": [{{fiscalizadorId}}]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"dataAgendada\", new Date(Date.now() + 86400000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"visitaId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Listar o fiscal da visita",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaId}}/fiscalizadores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaId}}",
+                "fiscalizadores"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Remover o fiscal",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaId}}/fiscalizadores/{{fiscalizadorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaId}}",
+                "fiscalizadores",
+                "{{fiscalizadorId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.expect(pm.response.code).to.be.oneOf([204]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Adicionar o fiscal",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaId}}/fiscalizadores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaId}}",
+                "fiscalizadores"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fiscalizadorId\": {{fiscalizadorId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 ou 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Substituir o fiscal",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaId}}/fiscalizadores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaId}}",
+                "fiscalizadores"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fiscalizadoresIds\": [{{fiscalizador2Id}}]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Limpeza · Excluir a visita",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 ou 204\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Limpeza · Excluir o 2º fiscal",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usuarios/{{fiscalizador2Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usuarios",
+                "{{fiscalizador2Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Visita ↔ Respostas",
+      "description": "Relacionamento entre visita e respostas. Grava uma visita de teste que continua na pasta 7.",
+      "item": [
+        {
+          "name": "Preparação · Criar visita",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"denunciado\": \"[Postman] Mercado Exemplo\",\n  \"razao_social\": \"Mercado Exemplo LTDA\",\n  \"nome_fantasia\": \"Mercado Exemplo\",\n  \"cnpj_cpf\": \"12.345.678/0001-90\",\n  \"bairro\": \"Piedade\",\n  \"data_agendada\": \"{{dataAgendada}}\",\n  \"fiscalizadores_ids\": [{{fiscalizadorId}}]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"dataAgendada\", new Date(Date.now() + 86400000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"visitaExecId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Preparação · Iniciar a visita",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/iniciar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "iniciar"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": -8.1802,\n  \"longitude\": -34.9186\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Preparação · Observações livres",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/observacoes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "observacoes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"observacoes_livres\": \"[Postman] Constatação de teste\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Preparação · Buscar perguntas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/questionario",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "questionario"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const exemplos = { sim_nao: \"Sim\", numero: \"10\", data: \"27/11/2026\", texto: \"Resposta de teste\" };",
+                  "const perguntas = pm.response.json();",
+                  "const respostas = perguntas.map((p) => ({ pergunta_id: p.id, resposta: exemplos[p.tipo_resposta] }));",
+                  "pm.collectionVariables.set(\"respostasJson\", JSON.stringify(respostas));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Enviar respostas",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/respostas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "respostas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"respostas\": {{respostasJson}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Listar respostas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/respostas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "respostas"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "if (pm.response.code < 300) {",
+                  "  const primeira = pm.response.json()[0];",
+                  "  const novos = { sim_nao: \"Não\", numero: \"20\", data: \"28/11/2026\", texto: \"Resposta alterada\" };",
+                  "  pm.collectionVariables.set(\"respostaId\", primeira.id);",
+                  "  pm.collectionVariables.set(\"respostaNova\", novos[primeira.pergunta.tipo_resposta]);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Buscar uma resposta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/respostas/{{respostaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "respostas",
+                "{{respostaId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Atualizar uma resposta",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/respostas/{{respostaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "respostas",
+                "{{respostaId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resposta\": \"{{respostaNova}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Excluir uma resposta",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/respostas/{{respostaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "respostas",
+                "{{respostaId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.expect(pm.response.code).to.be.oneOf([204]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Reenviar todas (para o documento)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/respostas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "respostas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"respostas\": {{respostasJson}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7. Documentos e Assinaturas",
+      "description": "Rode depois da pasta 6. Gera o PDF e conclui a visita de teste.",
+      "item": [
+        {
+          "name": "Gerar documento",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/documento",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "documento"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 ou 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"documentoId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Assinatura do fiscal",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documentos/{{documentoId}}/assinaturas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documentos",
+                "{{documentoId}}",
+                "assinaturas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assinante_tipo\": \"fiscalizador\",\n  \"imagem\": \"{{assinaturaPng}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));",
+                  "if (pm.response.code < 300) pm.collectionVariables.set(\"assinaturaId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Excluir a assinatura",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documentos/{{documentoId}}/assinaturas/{{assinaturaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documentos",
+                "{{documentoId}}",
+                "assinaturas",
+                "{{assinaturaId}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200 ou 204\", () => pm.expect(pm.response.code).to.be.oneOf([200, 204]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Assinar novamente (fiscal)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documentos/{{documentoId}}/assinaturas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documentos",
+                "{{documentoId}}",
+                "assinaturas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assinante_tipo\": \"fiscalizador\",\n  \"imagem\": \"{{assinaturaPng}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Responsável recusa assinar",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documentos/{{documentoId}}/assinaturas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documentos",
+                "{{documentoId}}",
+                "assinaturas"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assinante_tipo\": \"denunciado\",\n  \"assinante_nome\": \"[Postman] Responsável\",\n  \"recusou\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Sem e-mail, nada é enviado. Com todas as assinaturas, o PDF é gerado."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.expect(pm.response.code).to.be.oneOf([201]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Finalizar (gera o PDF, se faltar)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documentos/{{documentoId}}/finalizar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documentos",
+                "{{documentoId}}",
+                "finalizar"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Concluir a visita",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/visitas/{{visitaExecId}}/concluir",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "visitas",
+                "{{visitaExecId}}",
+                "concluir"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenFiscal}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Link temporário do PDF",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documentos/{{documentoId}}/pdf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documentos",
+                "{{documentoId}}",
+                "pdf"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "8. Administração",
+      "description": "Indicadores e exportação.",
+      "item": [
+        {
+          "name": "Dados gerais",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/dados-gerais",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "dados-gerais"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Exportar CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/exportar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "exportar"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "concluida",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    }
+  ]
+}
