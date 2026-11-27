@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 import Sequelize from "sequelize";
 import jwt from "jsonwebtoken";
 import { env } from "../config/index.js";
-import models from "../models/index.js";
+import models, { sequelize } from "../models/index.js";
 import { AppError, erroValidacao, gerarHashSenha, normalizarEmail } from "../utils/index.js";
 import usuarioService from "./usuarioService.js";
 
@@ -17,10 +17,13 @@ const { Op } = Sequelize;
 const SENHA_MINIMA = 8;
 const SENHA_MAXIMA = 72;
 
-// Access token curto: se for roubado (ex.: XSS), expira rápido. A sessão
-// continua ativa via refresh token, que é mais longo mas pode ser revogado.
-const ACCESS_TOKEN_EXPIRES_IN = "15m";
+// Mantém 1h por padrão até o interceptor de refresh entrar no front (app e web),
+// evitando deslogar usuários a cada 15 min enquanto ninguém renova automaticamente.
+// Pode ser sobrescrito via variável de ambiente quando o front estiver pronto.
+const ACCESS_TOKEN_EXPIRES_IN = env.ACCESS_TOKEN_EXPIRES_IN || "1h";
 const REFRESH_TOKEN_DIAS = 30;
+const REFRESH_TOKEN_MS = REFRESH_TOKEN_DIAS * 24 * 60 * 60 * 1000;
+const JANELA_TOLERANCIA_REUSO_MS = 10_000;
 
 const HASH_BCRYPT_REGEX = /^\$2[aby]?\$/;
 
@@ -87,16 +90,39 @@ const erroEmailCadastrado = () => new AppError("Email já cadastrado", 409);
 
 const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 
-// Marca todos os refresh tokens ainda ativos do usuário como revogados.
-// Usado quando um refresh já trocado é reapresentado: indício de que o token
-// foi roubado, então a sessão inteira é encerrada por precaução.
-const revogarTodosOsRefreshTokens = (usuarioId) =>
+// Marca os refresh tokens ainda não revogados do usuário como revogados.
+// Usado quando um refresh já trocado fora da janela de tolerância é reapresentado:
+// indício de que o token foi roubado, então a sessão inteira é encerrada por precaução.
+const revogarTodosOsRefreshTokens = (usuarioId, transaction) =>
   RefreshToken.update(
     { revogado_em: new Date() },
-    { where: { usuario_id: usuarioId, usado_em: null, revogado_em: null } }
+    {
+      where: { usuario_id: usuarioId, revogado_em: null },
+      ...(transaction && { transaction }),
+    }
   );
 
-const criarParDeTokens = async (usuario) => {
+const limparRefreshTokensAntigos = async (usuarioId, agora, transaction) => {
+  const corteRetencao = new Date(agora.getTime() - REFRESH_TOKEN_MS);
+
+  await RefreshToken.destroy({
+    where: {
+      usuario_id: usuarioId,
+      [Op.or]: [
+        { expira_em: { [Op.lt]: agora } },
+        { usado_em: { [Op.lt]: corteRetencao } },
+        { revogado_em: { [Op.lt]: corteRetencao } },
+      ],
+    },
+    ...(transaction && { transaction }),
+  });
+};
+
+const criarParDeTokens = async (usuario, transaction) => {
+  const agora = new Date();
+
+  await limparRefreshTokensAntigos(usuario.id, agora, transaction);
+
   const token = jwt.sign(
     { id: usuario.id, role: usuario.role },
     env.JWT_SECRET,
@@ -105,11 +131,14 @@ const criarParDeTokens = async (usuario) => {
 
   const refreshToken = randomBytes(48).toString("base64url");
 
-  await RefreshToken.create({
-    usuario_id: usuario.id,
-    token_hash: hashToken(refreshToken),
-    expira_em: new Date(Date.now() + REFRESH_TOKEN_DIAS * 24 * 60 * 60 * 1000),
-  });
+  await RefreshToken.create(
+    {
+      usuario_id: usuario.id,
+      token_hash: hashToken(refreshToken),
+      expira_em: new Date(agora.getTime() + REFRESH_TOKEN_MS),
+    },
+    { ...(transaction && { transaction }) }
+  );
 
   return {
     token,
@@ -155,38 +184,70 @@ const refresh = async (tokenRecebido) => {
     throw erroRefreshInvalido();
   }
 
-  const registro = await RefreshToken.findOne({
-    where: { token_hash: hashToken(tokenRecebido) },
+  const tokenHash = hashToken(tokenRecebido);
+
+  return await sequelize.transaction(async (transaction) => {
+    const agora = new Date();
+    const registro = await RefreshToken.findOne({
+      where: { token_hash: tokenHash },
+      transaction,
+    });
+
+    if (!registro) {
+      throw erroRefreshInvalido();
+    }
+
+    if (registro.revogado_em) {
+      throw erroRefreshInvalido();
+    }
+
+    if (registro.usado_em) {
+      const tempoDesdeUsoMs = agora.getTime() - new Date(registro.usado_em).getTime();
+      if (tempoDesdeUsoMs > JANELA_TOLERANCIA_REUSO_MS) {
+        await revogarTodosOsRefreshTokens(registro.usuario_id, transaction);
+      }
+      throw erroRefreshInvalido();
+    }
+
+    if (registro.expira_em < agora) {
+      throw erroRefreshInvalido();
+    }
+
+    const usuario = await Usuario.findByPk(registro.usuario_id, { transaction });
+
+    if (!usuario) {
+      throw erroRefreshInvalido();
+    }
+
+    if (usuario.aprovado === false) {
+      await RefreshToken.update(
+        { revogado_em: agora },
+        { where: { id: registro.id, revogado_em: null }, transaction }
+      );
+      throw erroCadastroPendente();
+    }
+
+    // Marca o uso de forma atômica: apenas a primeira requisição concorrente
+    // consegue transicionar usado_em de null para agora.
+    const [linhasAtualizadas] = await RefreshToken.update(
+      { usado_em: agora },
+      {
+        where: {
+          id: registro.id,
+          usado_em: null,
+          revogado_em: null,
+        },
+        transaction,
+      }
+    );
+
+    if (linhasAtualizadas !== 1) {
+      throw erroRefreshInvalido();
+    }
+
+    // Rotação: este token só podia ser usado uma vez; o próximo par substitui.
+    return criarParDeTokens(usuario, transaction);
   });
-
-  if (!registro) {
-    throw erroRefreshInvalido();
-  }
-
-  if (registro.usado_em || registro.revogado_em) {
-    await revogarTodosOsRefreshTokens(registro.usuario_id);
-    throw erroRefreshInvalido();
-  }
-
-  if (registro.expira_em < new Date()) {
-    throw erroRefreshInvalido();
-  }
-
-  const usuario = await Usuario.findByPk(registro.usuario_id);
-
-  if (!usuario) {
-    throw erroRefreshInvalido();
-  }
-
-  if (usuario.aprovado === false) {
-    await registro.update({ revogado_em: new Date() });
-    throw erroCadastroPendente();
-  }
-
-  // Rotação: este token só podia ser usado uma vez; o próximo par substitui.
-  await registro.update({ usado_em: new Date() });
-
-  return criarParDeTokens(usuario);
 };
 
 const textoPreenchido = (valor) => typeof valor === "string" && valor.trim() !== "";
