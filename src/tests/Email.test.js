@@ -249,7 +249,7 @@ describe("enviar senha gerada no cadastro", () => {
     nome: "Carla Mendes",
     quemCadastrou: "Helena Matos",
     role: "fiscalizador",
-    senha: "K7MQ-2PV9-RTA4",
+    senha: "K7MQ2PV9RTA4",
   };
 
   it("envia a senha no texto e no HTML, com a faixa do topo embutida", async () => {
@@ -260,9 +260,9 @@ describe("enviar senha gerada no cadastro", () => {
     expect(enviado.subject).toBe("Constata - Seu acesso está pronto");
     expect(enviado.text).toContain("Olá, Carla. Seu acesso está pronto.");
     expect(enviado.text).toContain("Helena Matos cadastrou você como fiscalizador no Constata");
-    expect(enviado.text).toContain("Sua senha: K7MQ-2PV9-RTA4");
+    expect(enviado.text).toContain("Sua senha: K7MQ2PV9RTA4");
     expect(enviado.html).toContain("Olá, Carla. Seu acesso está pronto.");
-    expect(enviado.html).toContain(">K7MQ-2PV9-RTA4</p>");
+    expect(enviado.html).toContain(">K7MQ2PV9RTA4</p>");
     expect(enviado.html).not.toContain("fonts.googleapis.com");
     expect(enviado.html).not.toContain("nenhuma conta será ativada");
     expect(enviado.html).toContain(
@@ -272,6 +272,7 @@ describe("enviar senha gerada no cadastro", () => {
       "Se você não esperava este e-mail, avise o Procon Jaboatão para que o acesso seja cancelado."
     );
     expect(enviado.html).toContain('src="cid:faixa-topo@constata"');
+    expect(enviado.html).toContain('width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px"');
     expect(enviado.attachments).toEqual([
       {
         filename: "faixa-topo.png",
@@ -309,7 +310,7 @@ describe("enviar senha gerada no cadastro", () => {
     expect(enviado.html).toContain("Olá, Carla. Sua senha foi renovada.");
     expect(enviado.text).toContain("Helena Matos gerou uma nova senha para o seu acesso ao Constata");
     expect(enviado.text).toContain("A senha anterior deixou de valer.");
-    expect(enviado.text).toContain("Sua senha: K7MQ-2PV9-RTA4");
+    expect(enviado.text).toContain("Sua senha: K7MQ2PV9RTA4");
   });
 
   it("rejeita perfil desconhecido ou senha vazia sem enviar", async () => {

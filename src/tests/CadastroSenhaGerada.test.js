@@ -36,7 +36,7 @@ describe("cadastro com senha gerada", () => {
     const salvo = Usuario.create.mock.calls[0][0];
     const { senha } = enviarSenhaGerada.mock.calls[0][0];
 
-    expect(senha).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(senha).toMatch(/^[A-Z2-9]{12}$/);
     expect(await bcrypt.compare(senha, salvo.senha_hash)).toBe(true);
     expect(Usuario.create).toHaveBeenCalledWith(expect.objectContaining({ email: "carla@exemplo.com" }), {
       transaction: transacao,
