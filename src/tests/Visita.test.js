@@ -293,13 +293,13 @@ describe("buscar visita por id", () => {
 });
 
 describe("buscar visita para checar acesso", () => {
-  it("busca só o id, o status e os ids dos fiscalizadores", async () => {
+  it("busca só o id, o status, o gestor e os ids dos fiscalizadores", async () => {
     Visita.findByPk.mockResolvedValue({ id: 10 });
 
     const resultado = await visitaService.buscarParaAcesso(10);
 
     expect(Visita.findByPk).toHaveBeenCalledWith(10, {
-      attributes: ["id", "status"],
+      attributes: ["id", "status", "gestor_id"],
       include: [
         expect.objectContaining({
           as: "fiscalizadores",

@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import Sequelize from "sequelize";
 import jwt from "jsonwebtoken";
 import models from "../models/index.js";
+import AppError from "../utils/appError.js";
 import erroValidacao from "../utils/erroValidacao.js";
 import normalizarEmail from "../utils/normalizarEmail.js";
 import usuarioService from "./usuarioService.js";
@@ -18,33 +19,14 @@ const SENHA_MAXIMA = 72;
 const ACCESS_TOKEN_EXPIRES_IN = "15m";
 const REFRESH_TOKEN_DIAS = 30;
 
-const erroAutenticacao = () => {
-  const erro = new Error("Email ou senha inválidos");
-  erro.name = "AutenticacaoError";
+const erroAutenticacao = () => new AppError("Email ou senha inválidos", 401);
 
-  return erro;
-};
+const erroRefreshInvalido = () => new AppError("Sessão expirada. Faça login novamente.", 401);
 
-const erroRefreshInvalido = () => {
-  const erro = new Error("Sessão expirada. Faça login novamente.");
-  erro.name = "RefreshTokenError";
+const erroCadastroPendente = () =>
+  new AppError("Cadastro aguardando aprovação de um administrador", 403);
 
-  return erro;
-};
-
-const erroCadastroPendente = () => {
-  const erro = new Error("Cadastro aguardando aprovação de um administrador");
-  erro.name = "CadastroPendenteError";
-
-  return erro;
-};
-
-const erroEmailCadastrado = () => {
-  const erro = new Error("Email já cadastrado");
-  erro.name = "EmailCadastradoError";
-
-  return erro;
-};
+const erroEmailCadastrado = () => new AppError("Email já cadastrado", 409);
 
 const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import express from "express";
 import jwt from "jsonwebtoken";
 import documentoRoutes from "../routes/documentoRoutes.js";
+import errorHandler from "../middlewares/errorHandler.js";
 import assinaturaService from "../services/assinaturaService.js";
 import documentoService from "../services/documentoService.js";
 import { waitUntil } from "@vercel/functions";
@@ -49,6 +50,7 @@ beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use("/documentos", documentoRoutes);
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -312,8 +314,7 @@ describe("POST /documentos/:id/assinaturas", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao registrar assinatura",
-      erros: ["Este fiscalizador já assinou o documento"],
+      mensagem: "Este fiscalizador já assinou o documento",
     });
   });
 
@@ -346,7 +347,7 @@ describe("POST /documentos/:id/assinaturas", () => {
     const resposta = await requisitar("/documentos/7/assinaturas");
 
     expect(resposta.status).toBe(500);
-    expect(await resposta.json()).toEqual({ mensagem: "Erro ao registrar assinatura" });
+    expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     consoleError.mockRestore();
   });
 });

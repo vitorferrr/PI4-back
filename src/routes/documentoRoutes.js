@@ -4,6 +4,8 @@ import documentoController from "../controllers/documentoController.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 import validarId from "../middlewares/validarIdMiddleware.js";
+import validate from "../middlewares/validate.js";
+import { registrarAssinaturaSchema } from "../middlewares/validationSchemas.js";
 
 const router = Router();
 
@@ -12,6 +14,7 @@ router.post(
   autenticar,
   autorizar("fiscalizador"),
   validarId,
+  validate(registrarAssinaturaSchema),
   assinaturaController.registrar
 );
 

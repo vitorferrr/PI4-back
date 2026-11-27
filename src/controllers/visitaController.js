@@ -1,264 +1,167 @@
 import visitaService from "../services/visitaService.js";
-import tratarErro from "../utils/tratarErro.js";
-import { podeAcessarVisita, responderNaoEncontrada } from "../utils/acessoVisita.js";
+import AppError from "../utils/appError.js";
+import { erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
 
-const podeGerenciarVisita = (usuario, visita) =>
-  usuario?.role === "admin" || visita.gestor_id === usuario?.id;
+const MENSAGEM_REFERENCIA_INVALIDA =
+  "Gestor ou fiscalizador informado não existe no sistema.";
 
-const transicionar = (transicao, mensagemErro) => async (req, res) => {
+const comReferenciasValidas = async (operacao) => {
   try {
-    const visita = await visitaService.buscarPorId(req.params.id);
-
-    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-      return responderNaoEncontrada(res);
-    }
-
-    const visitaAtualizada = await transicao(req.params.id, req);
-
-    if (!visitaAtualizada) {
-      return responderNaoEncontrada(res);
-    }
-
-    return res.status(200).json(visitaAtualizada);
+    return await operacao();
   } catch (erro) {
-    return tratarErro(res, erro, mensagemErro);
+    if (erro.name === "SequelizeForeignKeyConstraintError") {
+      throw new AppError(MENSAGEM_REFERENCIA_INVALIDA, 400);
+    }
+
+    throw erro;
   }
+};
+
+const transicionar = (transicao) => async (req, res) => {
+  const visitaAtualizada = await transicao(req.params.id, req);
+
+  if (!visitaAtualizada) {
+    throw erroVisitaNaoEncontrada();
+  }
+
+  return res.status(200).json(visitaAtualizada);
 };
 
 const criar = async (req, res) => {
-  try {
-    const { fiscalizadores_ids, fiscalizadores, ...dadosVisita } = req.body;
-    const ids = fiscalizadores_ids ?? fiscalizadores ?? [];
+  const { fiscalizadores_ids, fiscalizadores, ...dadosVisita } = req.body;
+  const ids = fiscalizadores_ids ?? fiscalizadores ?? [];
 
-    if (!dadosVisita.gestor_id && req.usuario?.id) {
-      dadosVisita.gestor_id = req.usuario.id;
-    }
-
-    const visita = await visitaService.criar(dadosVisita, ids);
-
-    return res.status(201).json(visita);
-  } catch (erro) {
-    return tratarErro(
-      res,
-      erro,
-      "Erro ao criar visita",
-      "Gestor ou fiscalizador informado não existe no sistema."
-    );
+  if (!dadosVisita.gestor_id && req.usuario?.id) {
+    dadosVisita.gestor_id = req.usuario.id;
   }
+
+  const visita = await comReferenciasValidas(() => visitaService.criar(dadosVisita, ids));
+
+  return res.status(201).json(visita);
 };
 
 const listar = async (req, res) => {
-  try {
-    const filtros = {
-      status: req.query.status,
-      gestor_id: req.query.gestor_id,
-      fiscalizador_id: req.query.fiscalizador_id,
-    };
+  const filtros = {
+    status: req.query.status,
+    gestor_id: req.query.gestor_id,
+    fiscalizador_id: req.query.fiscalizador_id,
+  };
 
-    if (req.usuario?.role === "fiscalizador") {
-      filtros.fiscalizador_id = req.usuario.id;
-    }
-
-    const visitas = await visitaService.listar(filtros);
-
-    return res.status(200).json(visitas);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao listar visitas");
+  if (req.usuario?.role === "fiscalizador") {
+    filtros.fiscalizador_id = req.usuario.id;
   }
+
+  const visitas = await visitaService.listar(filtros);
+
+  return res.status(200).json(visitas);
 };
 
 const buscarPorId = async (req, res) => {
-  try {
-    const visita = await visitaService.buscarPorId(req.params.id);
+  const visita = await visitaService.buscarPorId(req.params.id);
 
-    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-      return responderNaoEncontrada(res);
-    }
-
-    return res.status(200).json(visita);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao buscar visita");
+  if (!visita) {
+    throw erroVisitaNaoEncontrada();
   }
+
+  return res.status(200).json(visita);
 };
 
-const iniciar = transicionar(
-  (id, req) => visitaService.iniciar(id, req.body),
-  "Erro ao iniciar visita"
-);
+const iniciar = transicionar((id, req) => visitaService.iniciar(id, req.body));
 
-const concluir = transicionar((id) => visitaService.concluir(id), "Erro ao concluir visita");
+const concluir = transicionar((id) => visitaService.concluir(id));
 
 const salvarObservacoes = async (req, res) => {
-  try {
-    const visita = await visitaService.buscarParaAcesso(req.params.id);
+  const visitaAtualizada = await visitaService.salvarObservacoes(
+    req.visita.id,
+    req.body.observacoes_livres
+  );
 
-    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-      return responderNaoEncontrada(res);
-    }
-
-    const visitaAtualizada = await visitaService.salvarObservacoes(
-      visita.id,
-      req.body.observacoes_livres
-    );
-
-    if (!visitaAtualizada) {
-      return responderNaoEncontrada(res);
-    }
-
-    return res.status(200).json(visitaAtualizada);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao salvar observações");
+  if (!visitaAtualizada) {
+    throw erroVisitaNaoEncontrada();
   }
+
+  return res.status(200).json(visitaAtualizada);
 };
 
 const atualizar = async (req, res) => {
-  try {
-    const visita = await visitaService.buscarPorId(req.params.id);
+  const { fiscalizadores_ids, fiscalizadores, ...dadosVisita } = req.body ?? {};
+  const ids = fiscalizadores_ids ?? fiscalizadores;
 
-    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-      return responderNaoEncontrada(res);
-    }
+  const visitaAtualizada = await comReferenciasValidas(() =>
+    visitaService.atualizar(req.params.id, dadosVisita, ids)
+  );
 
-    const { fiscalizadores_ids, fiscalizadores, ...dadosVisita } = req.body ?? {};
-    const ids = fiscalizadores_ids ?? fiscalizadores;
-
-    const visitaAtualizada = await visitaService.atualizar(
-      req.params.id,
-      dadosVisita,
-      ids
-    );
-
-    if (!visitaAtualizada) {
-      return responderNaoEncontrada(res);
-    }
-
-    return res.status(200).json(visitaAtualizada);
-  } catch (erro) {
-    return tratarErro(
-      res,
-      erro,
-      "Erro ao atualizar visita",
-      "Gestor ou fiscalizador informado não existe no sistema."
-    );
+  if (!visitaAtualizada) {
+    throw erroVisitaNaoEncontrada();
   }
+
+  return res.status(200).json(visitaAtualizada);
 };
 
 const remover = async (req, res) => {
-  try {
-    const visita = await visitaService.buscarPorId(req.params.id);
+  const visitaRemovida = await visitaService.remover(req.params.id);
 
-    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-      return responderNaoEncontrada(res);
-    }
-
-    const visitaRemovida = await visitaService.remover(req.params.id);
-
-    if (!visitaRemovida) {
-      return responderNaoEncontrada(res);
-    }
-
-    return res.status(204).send();
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao apagar visita");
+  if (!visitaRemovida) {
+    throw erroVisitaNaoEncontrada();
   }
+
+  return res.status(204).send();
 };
 
 const listarFiscalizadores = async (req, res) => {
-  try {
-    const visita = await visitaService.buscarPorId(req.params.id);
+  const fiscalizadores = await visitaService.listarFiscalizadores(req.params.id);
 
-    if (!visita || !podeAcessarVisita(req.usuario, visita)) {
-      return responderNaoEncontrada(res);
-    }
-
-    const fiscalizadores = await visitaService.listarFiscalizadores(req.params.id);
-
-    if (!fiscalizadores) {
-      return responderNaoEncontrada(res);
-    }
-
-    return res.status(200).json(fiscalizadores);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao listar fiscalizadores da visita");
+  if (!fiscalizadores) {
+    throw erroVisitaNaoEncontrada();
   }
+
+  return res.status(200).json(fiscalizadores);
 };
 
 const adicionarFiscalizador = async (req, res) => {
-  try {
-    const visita = await visitaService.buscarPorId(req.params.id);
+  const fiscalizadorId = req.body?.fiscalizadorId ?? req.body?.fiscalizador_id;
+  const fiscalizadores = await visitaService.adicionarFiscalizador(
+    req.params.id,
+    fiscalizadorId
+  );
 
-    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-      return responderNaoEncontrada(res);
-    }
-
-    const fiscalizadorId = req.body?.fiscalizadorId ?? req.body?.fiscalizador_id;
-    const fiscalizadores = await visitaService.adicionarFiscalizador(
-      req.params.id,
-      fiscalizadorId
-    );
-
-    if (!fiscalizadores) {
-      return responderNaoEncontrada(res);
-    }
-
-    return res.status(201).json(fiscalizadores);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao vincular fiscalizador à visita");
+  if (!fiscalizadores) {
+    throw erroVisitaNaoEncontrada();
   }
+
+  return res.status(201).json(fiscalizadores);
 };
 
 const substituirFiscalizadores = async (req, res) => {
-  try {
-    const visita = await visitaService.buscarPorId(req.params.id);
+  const fiscalizadoresIds =
+    req.body?.fiscalizadoresIds ?? req.body?.fiscalizadores_ids;
+  const fiscalizadores = await visitaService.substituirFiscalizadores(
+    req.params.id,
+    fiscalizadoresIds
+  );
 
-    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-      return responderNaoEncontrada(res);
-    }
-
-    const fiscalizadoresIds =
-      req.body?.fiscalizadoresIds ?? req.body?.fiscalizadores_ids;
-    const fiscalizadores = await visitaService.substituirFiscalizadores(
-      req.params.id,
-      fiscalizadoresIds
-    );
-
-    if (!fiscalizadores) {
-      return responderNaoEncontrada(res);
-    }
-
-    return res.status(200).json(fiscalizadores);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao atualizar fiscalizadores da visita");
+  if (!fiscalizadores) {
+    throw erroVisitaNaoEncontrada();
   }
+
+  return res.status(200).json(fiscalizadores);
 };
 
 const removerFiscalizador = async (req, res) => {
-  try {
-    const visita = await visitaService.buscarPorId(req.params.id);
+  const resultado = await visitaService.removerFiscalizador(
+    req.params.id,
+    req.params.fiscalizadorId
+  );
 
-    if (!visita || !podeGerenciarVisita(req.usuario, visita)) {
-      return responderNaoEncontrada(res);
-    }
-
-    const resultado = await visitaService.removerFiscalizador(
-      req.params.id,
-      req.params.fiscalizadorId
-    );
-
-    if (!resultado) {
-      return responderNaoEncontrada(res);
-    }
-
-    if (resultado.naoVinculado) {
-      return res.status(404).json({
-        mensagem: "Fiscalizador não vinculado à visita",
-      });
-    }
-
-    return res.status(204).send();
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao remover fiscalizador da visita");
+  if (!resultado) {
+    throw erroVisitaNaoEncontrada();
   }
+
+  if (resultado.naoVinculado) {
+    throw new AppError("Fiscalizador não vinculado à visita", 404);
+  }
+
+  return res.status(204).send();
 };
 
 export default {

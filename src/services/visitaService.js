@@ -20,8 +20,6 @@ const includeFiscalizadoresPadrao = {
   through: { attributes: [] },
 };
 
-// Só o necessário para o app saber quem já assinou e sincronizar os cartões (DT-47).
-// Ficam de fora o CPF, o e-mail do responsável e o caminho da imagem no storage.
 const ATRIBUTOS_ASSINATURA = [
   "id",
   "documento_id",
@@ -149,7 +147,7 @@ const listar = async (filtros = {}) => {
 
 const buscarParaAcesso = async (id) =>
   await Visita.findByPk(id, {
-    attributes: ["id", "status"],
+    attributes: ["id", "status", "gestor_id"],
     include: [{ ...includeFiscalizadoresPadrao, attributes: ["id"] }],
   });
 

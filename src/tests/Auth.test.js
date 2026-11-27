@@ -7,6 +7,8 @@ import authService from "../services/authService.js";
 import authController from "../controllers/authController.js";
 import autenticar, { autenticarLogout } from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
+import errorHandler from "../middlewares/errorHandler.js";
+import AppError from "../utils/appError.js";
 
 vi.mock("../models/index.js", () => ({
   default: {
@@ -36,6 +38,13 @@ const criarRes = () => {
   res.json = vi.fn(() => res);
   return res;
 };
+
+// next() de mentira que faz o que o Express faz: se o middleware chamar
+// next(erro), o erro vai para o errorHandler, que monta a resposta em res.
+const encaminharErro = (res) =>
+  vi.fn((erro) => {
+    if (erro) errorHandler(erro, {}, res, () => {});
+  });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -84,7 +93,7 @@ describe("login (authService)", () => {
 
     await expect(
       authService.login({ email: "  Bia@Exemplo.COM ", senha: "1234" })
-    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+    ).rejects.toMatchObject({ statusCode: 401 });
 
     expect(Usuario.findOne).toHaveBeenCalledWith({ where: { email: "bia@exemplo.com" } });
   });
@@ -93,7 +102,7 @@ describe("login (authService)", () => {
     "rejeita email que não é texto preenchido (%o) sem consultar o banco",
     async (email) => {
       await expect(authService.login({ email, senha: "1234" })).rejects.toMatchObject({
-        name: "AutenticacaoError",
+        statusCode: 401,
       });
       expect(Usuario.findOne).not.toHaveBeenCalled();
     }
@@ -112,7 +121,7 @@ describe("login (authService)", () => {
 
     await expect(
       authService.login({ email: "x@exemplo.com", senha: "1234" })
-    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it("bloqueia o login de cadastro ainda não aprovado", async () => {
@@ -126,7 +135,7 @@ describe("login (authService)", () => {
     await expect(
       authService.login({ email: "bia@exemplo.com", senha: "senha-forte" })
     ).rejects.toMatchObject({
-      name: "CadastroPendenteError",
+      statusCode: 403,
       message: "Cadastro aguardando aprovação de um administrador",
     });
   });
@@ -140,7 +149,7 @@ describe("login (authService)", () => {
 
     await expect(
       authService.login({ email: "bia@exemplo.com", senha: "errada" })
-    ).rejects.toMatchObject({ name: "AutenticacaoError" });
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it("rejeita quando a senha está errada", async () => {
@@ -181,13 +190,13 @@ describe("refresh (authService)", () => {
 
   it("rejeita token inexistente, vazio ou que não é texto, sem consultar o banco quando vazio", async () => {
     for (const valor of [undefined, "", "   ", 123]) {
-      await expect(authService.refresh(valor)).rejects.toMatchObject({ name: "RefreshTokenError" });
+      await expect(authService.refresh(valor)).rejects.toMatchObject({ statusCode: 401, message: "Sessão expirada. Faça login novamente." });
     }
     expect(RefreshToken.findOne).not.toHaveBeenCalled();
 
     RefreshToken.findOne.mockResolvedValue(null);
     await expect(authService.refresh("token-desconhecido")).rejects.toMatchObject({
-      name: "RefreshTokenError",
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
     });
   });
 
@@ -201,7 +210,7 @@ describe("refresh (authService)", () => {
     });
 
     await expect(authService.refresh("token-vencido")).rejects.toMatchObject({
-      name: "RefreshTokenError",
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
     });
   });
 
@@ -215,7 +224,7 @@ describe("refresh (authService)", () => {
     });
 
     await expect(authService.refresh("token-reusado")).rejects.toMatchObject({
-      name: "RefreshTokenError",
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
     });
 
     expect(RefreshToken.update).toHaveBeenCalledWith(
@@ -234,7 +243,7 @@ describe("refresh (authService)", () => {
     });
 
     await expect(authService.refresh("token-revogado")).rejects.toMatchObject({
-      name: "RefreshTokenError",
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
     });
   });
 
@@ -249,7 +258,7 @@ describe("refresh (authService)", () => {
     Usuario.findByPk.mockResolvedValue(null);
 
     await expect(authService.refresh("token-de-usuario-removido")).rejects.toMatchObject({
-      name: "RefreshTokenError",
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
     });
   });
 
@@ -265,7 +274,7 @@ describe("refresh (authService)", () => {
     Usuario.findByPk.mockResolvedValue({ id: 1, aprovado: false });
 
     await expect(authService.refresh("token-pendente")).rejects.toMatchObject({
-      name: "CadastroPendenteError",
+      statusCode: 403, message: "Cadastro aguardando aprovação de um administrador",
     });
     expect(registro.update).toHaveBeenCalledWith({ revogado_em: expect.any(Date) });
   });
@@ -276,7 +285,7 @@ describe("middleware autenticar", () => {
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO);
     const req = { headers: { authorization: `Bearer ${token}` } };
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar(req, res, next);
 
@@ -286,46 +295,46 @@ describe("middleware autenticar", () => {
 
   it("retorna 401 sem o cabeçalho Authorization", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar({ headers: {} }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Token não informado" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("retorna 401 quando o formato não é Bearer", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar({ headers: { authorization: "Basic abc" } }, res, next);
 
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("retorna 401 para token assinado com outro segredo", () => {
     const token = jwt.sign({ id: 1 }, "outro-segredo");
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar({ headers: { authorization: `Bearer ${token}` } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido ou expirado" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("retorna 401 para token expirado", () => {
     const token = jwt.sign({ id: 1 }, SEGREDO, { expiresIn: -10 });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autenticar({ headers: { authorization: `Bearer ${token}` } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 });
 
@@ -336,14 +345,14 @@ describe("middleware autenticar com logout", () => {
     TokenRevogado.findOne.mockResolvedValue({ id: 1 });
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticar(requisicaoCom(token), res, next);
 
     expect(TokenRevogado.findOne).toHaveBeenCalledWith({ attributes: ["id"], where: { jti: "abc" } });
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Sessão encerrada" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("aceita token com id que não foi encerrado", async () => {
@@ -376,13 +385,13 @@ describe("middleware autenticar com logout", () => {
     TokenRevogado.findOne.mockRejectedValue(erro);
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticar(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(503);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Banco de dados indisponível" });
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("responde 500 e registra o erro quando a falha não é de conexão", async () => {
@@ -390,14 +399,14 @@ describe("middleware autenticar com logout", () => {
     TokenRevogado.findOne.mockRejectedValue(erro);
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticar(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Erro interno do servidor" });
     expect(console.error).toHaveBeenCalledWith("Falha ao conferir o token revogado:", erro);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   // DT-38: no logout o pedido segue para o controller mesmo com o access token já
@@ -436,30 +445,31 @@ describe("middleware autenticar com logout", () => {
   it("no logout, token vencido com assinatura falsa continua respondendo 401", async () => {
     const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, "outro-segredo");
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticarLogout(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido ou expirado" });
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("no logout, token com assinatura falsa continua respondendo 401", async () => {
     const token = jwt.sign({ id: 1, role: "admin" }, "outro-segredo", { jwtid: "abc" });
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     await autenticarLogout(requisicaoCom(token), res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("fora do logout, token vencido continua respondendo 401", async () => {
     const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, SEGREDO);
     const res = criarRes();
 
-    await autenticar(requisicaoCom(token), res, vi.fn());
+    await autenticar(requisicaoCom(token), res, encaminharErro(res));
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido ou expirado" });
@@ -533,7 +543,7 @@ describe("logout (authService)", () => {
 describe("middleware autorizar", () => {
   it("deixa passar quando o perfil é permitido", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autorizar("admin", "gestor")({ usuario: { role: "gestor" } }, res, next);
 
@@ -542,38 +552,26 @@ describe("middleware autorizar", () => {
 
   it("retorna 403 quando o perfil não é permitido", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autorizar("admin")({ usuario: { role: "fiscalizador" } }, res, next);
 
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 
   it("retorna 401 quando não há usuário autenticado", () => {
     const res = criarRes();
-    const next = vi.fn();
+    const next = encaminharErro(res);
 
     autorizar("admin")({}, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalledWith();
   });
 });
 
 describe("authController.login", () => {
-  it("retorna 400 se email ou senha não forem fornecidos", async () => {
-    const req = { body: {} };
-    const res = criarRes();
-
-    await authController.login(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({
-      mensagem: "Email e senha são obrigatórios",
-    });
-  });
-
   it("retorna 200 e o resultado quando o login for bem-sucedido", async () => {
     const req = { body: { email: "bia@exemplo.com", senha: "123" } };
     const res = criarRes();
@@ -587,47 +585,15 @@ describe("authController.login", () => {
     expect(res.json).toHaveBeenCalledWith(tokenMock);
   });
 
-  it("retorna 401 quando o authService lança AutenticacaoError", async () => {
+  it("deixa o erro do authService subir para o middleware global de erro", async () => {
     const req = { body: { email: "errado@exemplo.com", senha: "errada" } };
     const res = criarRes();
+    const erro = new Error("Erro de banco");
 
-    const erro = new Error("E-mail ou senha inválidos");
-    erro.name = "AutenticacaoError";
-    
     vi.spyOn(authService, "login").mockRejectedValueOnce(erro);
 
-    await authController.login(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ mensagem: "E-mail ou senha inválidos" });
-  });
-
-  it("retorna 500 quando ocorre um erro genérico/inesperado", async () => {
-    const req = { body: { email: "bia@exemplo.com", senha: "123" } };
-    const res = criarRes();
-
-    vi.spyOn(authService, "login").mockRejectedValueOnce(
-      Object.assign(new Error("Cadastro aguardando aprovação de um administrador"), {
-        name: "CadastroPendenteError",
-      })
-    );
-
-    await authController.login(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({
-      mensagem: "Cadastro aguardando aprovação de um administrador",
-    });
-
-    vi.clearAllMocks();
-    vi.spyOn(authService, "login").mockRejectedValueOnce(new Error("Erro de banco"));
-
-    await authController.login(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({
-      mensagem: "Erro ao realizar login",
-    });
+    await expect(authController.login(req, res)).rejects.toBe(erro);
+    expect(res.status).not.toHaveBeenCalled();
   });
 });
 
@@ -646,44 +612,14 @@ describe("authController.refresh", () => {
     expect(res.json).toHaveBeenCalledWith(novoPar);
   });
 
-  it("retorna 401 quando o refresh token é inválido, vencido ou já usado", async () => {
+  it("deixa o erro do authService subir para o middleware global de erro", async () => {
     const req = { body: { refreshToken: "refresh-invalido" } };
     const res = criarRes();
+    const erro = new AppError("Sessão expirada. Faça login novamente.", 401);
 
-    vi.spyOn(authService, "refresh").mockRejectedValueOnce(
-      Object.assign(new Error("Sessão expirada. Faça login novamente."), { name: "RefreshTokenError" })
-    );
+    vi.spyOn(authService, "refresh").mockRejectedValueOnce(erro);
 
-    await authController.refresh(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ mensagem: "Sessão expirada. Faça login novamente." });
-  });
-
-  it("retorna 403 quando o cadastro ainda não foi aprovado", async () => {
-    const req = { body: { refreshToken: "refresh-de-pendente" } };
-    const res = criarRes();
-
-    vi.spyOn(authService, "refresh").mockRejectedValueOnce(
-      Object.assign(new Error("Cadastro aguardando aprovação de um administrador"), {
-        name: "CadastroPendenteError",
-      })
-    );
-
-    await authController.refresh(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-  });
-
-  it("retorna 500 em erro inesperado", async () => {
-    const req = { body: { refreshToken: "refresh-qualquer" } };
-    const res = criarRes();
-
-    vi.spyOn(authService, "refresh").mockRejectedValueOnce(new Error("banco fora"));
-
-    await authController.refresh(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({ mensagem: "Erro ao renovar a sessão" });
+    await expect(authController.refresh(req, res)).rejects.toBe(erro);
+    expect(res.status).not.toHaveBeenCalled();
   });
 });

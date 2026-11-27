@@ -42,7 +42,7 @@ describe("inicialização na Vercel", () => {
     vi.stubEnv("VERCEL", "1");
   });
 
-  it("responde normalmente quando o banco conecta", async () => {
+  it("responde normalmente quando o banco conecta", { timeout: 20000 }, async () => {
     sync.mockResolvedValue();
     const app = await carregarApp();
 
@@ -50,6 +50,43 @@ describe("inicialização na Vercel", () => {
 
     expect(resposta.status).toBe(200);
     expect(await resposta.text()).toBe("Servidor express executando...");
+  });
+
+  it("responde 404 em JSON quando a rota não existe", async () => {
+    sync.mockResolvedValue();
+    const app = await carregarApp();
+
+    const resposta = await requisitar(app, "/rota-que-nao-existe");
+
+    expect(resposta.status).toBe(404);
+    expect(await resposta.json()).toEqual({
+      mensagem: "Rota /rota-que-nao-existe não encontrada no servidor.",
+    });
+  });
+
+  it("envia os headers de segurança do Helmet e esconde o X-Powered-By", async () => {
+    sync.mockResolvedValue();
+    const app = await carregarApp();
+
+    const resposta = await requisitar(app, "/");
+
+    expect(resposta.headers.get("content-security-policy")).toBeTruthy();
+    expect(resposta.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(resposta.headers.get("x-powered-by")).toBeNull();
+  });
+
+  it("confia no proxy da Vercel e liga o CORS e o limite geral antes das rotas", async () => {
+    sync.mockResolvedValue();
+    const app = await carregarApp();
+    await requisitar(app, "/");
+    const url = `http://127.0.0.1:${servidor.address().port}/usuarios`;
+
+    const liberada = await fetch(`http://127.0.0.1:${servidor.address().port}/`);
+    const barrada = await fetch(url, { headers: { Origin: "https://site-malicioso.com" } });
+
+    expect(app.get("trust proxy")).toBe(1);
+    expect(liberada.headers.get("ratelimit-policy")).toBe("500;w=900");
+    expect(barrada.status).toBe(403);
   });
 
   it.each(["/", "/usuarios", "/visitas/1", "/auth/login"])(

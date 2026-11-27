@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import Sequelize from "sequelize";
-import { responderErro } from "./errorHandler.js";
+import AppError from "../utils/appError.js";
 import authService from "../services/authService.js";
 
 const bancoIndisponivel = (erro) =>
@@ -16,13 +16,13 @@ const criarAutenticacao = ({
   const authorization = req.headers.authorization;
 
   if (!authorization) {
-    return responderErro(res, 401, "Token não informado");
+    return next(new AppError("Token não informado", 401));
   }
 
   const [tipo, token] = authorization.split(" ");
 
   if (tipo !== "Bearer" || !token) {
-    return responderErro(res, 401, "Token inválido");
+    return next(new AppError("Token inválido", 401));
   }
 
   let payload;
@@ -32,7 +32,7 @@ const criarAutenticacao = ({
   } catch (erro) {
     console.error(erro);
 
-    return responderErro(res, 401, "Token inválido ou expirado");
+    return next(new AppError("Token inválido ou expirado", 401));
   }
 
   if (payload.jti && !aceitarSessaoEncerrada) {
@@ -43,13 +43,15 @@ const criarAutenticacao = ({
     } catch (erro) {
       console.error("Falha ao conferir o token revogado:", erro);
 
-      return bancoIndisponivel(erro)
-        ? responderErro(res, 503, "Banco de dados indisponível")
-        : responderErro(res, 500, "Erro interno do servidor");
+      return next(
+        bancoIndisponivel(erro)
+          ? new AppError("Banco de dados indisponível", 503)
+          : new AppError("Erro interno do servidor", 500)
+      );
     }
 
     if (revogado) {
-      return aoEncontrarSessaoEncerrada(res);
+      return aoEncontrarSessaoEncerrada(res, next);
     }
   }
 
@@ -59,7 +61,7 @@ const criarAutenticacao = ({
 };
 
 const autenticar = criarAutenticacao({
-  aoEncontrarSessaoEncerrada: (res) => responderErro(res, 401, "Sessão encerrada"),
+  aoEncontrarSessaoEncerrada: (res, next) => next(new AppError("Sessão encerrada", 401)),
 });
 
 // DT-38: o access token dura só 15 min, então a maior parte dos logouts chega com

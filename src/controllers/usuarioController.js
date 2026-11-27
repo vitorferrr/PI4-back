@@ -1,127 +1,78 @@
 import usuarioService from "../services/usuarioService.js";
-
-const tratarErro = (res, erro, mensagem) => {
-  if (erro.name === "SequelizeUniqueConstraintError") {
-    return res.status(409).json({
-      mensagem: "Email já cadastrado",
-    });
-  }
-
-  if (
-    erro.name === "SequelizeValidationError" ||
-    erro.name === "ValidacaoError"
-  ) {
-    return res.status(400).json({
-      mensagem,
-      erros: erro.errors
-        ? erro.errors.map((e) => e.message)
-        : [erro.message],
-    });
-  }
-
-  console.error(erro);
-
-  return res.status(500).json({
-    mensagem,
-  });
-};
+import AppError from "../utils/appError.js";
 
 const criar = async (req, res) => {
-  try {
-    const usuario = await usuarioService.criar(req.body);
+  const usuario = await usuarioService.criarComSenhaGerada(req.body, req.usuario.id);
 
-    return res.status(201).json(usuario);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao criar usuário");
+  return res.status(201).json(usuario);
+};
+
+const reenviarSenha = async (req, res) => {
+  const usuario = await usuarioService.reenviarSenha(req.params.id, req.usuario.id);
+
+  if (!usuario) {
+    throw new AppError("Usuário não encontrado", 404);
   }
+
+  return res.status(200).json(usuario);
 };
 
 const listar = async (req, res) => {
-  try{
-    const filtro = req.query?.aprovado === undefined ? undefined : req.query.aprovado === "true";
+  const filtro = req.query?.aprovado === undefined ? undefined : req.query.aprovado === "true";
 
-    if (req.usuario.role !== "admin" && filtro === false) {
-      return res.status(200).json([]);
-    }
-
-    const usuario = await usuarioService.listar({
-      aprovado: req.usuario.role === "admin" ? filtro : true,
-    });
-
-    return res.status(200).json(usuario);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao listar usuários");
+  if (req.usuario.role !== "admin" && filtro === false) {
+    return res.status(200).json([]);
   }
+
+  const usuario = await usuarioService.listar({
+    aprovado: req.usuario.role === "admin" ? filtro : true,
+  });
+
+  return res.status(200).json(usuario);
 };
 
 const atualizar = async (req, res) => {
-  try {
-    const usuario = await usuarioService.atualizar(
-      req.params.id,
-      req.body
-    );
+  const usuario = await usuarioService.atualizar(req.params.id, req.body);
 
-    if (!usuario) {
-      return res.status(404).json({
-        mensagem: "Usuário não encontrado",
-      });
-    }
-
-    return res.status(200).json(usuario);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao atualizar usuário");
+  if (!usuario) {
+    throw new AppError("Usuário não encontrado", 404);
   }
+
+  return res.status(200).json(usuario);
 };
 
 const remover = async (req, res) => {
-  try{
-    const usuario = await usuarioService.remover(req.params.id);
+  const usuario = await usuarioService.remover(req.params.id);
 
-    if (!usuario) {
-      return res.status(404).json({
-        mensagem: "Usuário não encontrado",
-      });
-    }
-
-    return res.status(200).json(usuario);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao apagar usuário");
+  if (!usuario) {
+    throw new AppError("Usuário não encontrado", 404);
   }
+
+  return res.status(200).json(usuario);
 };
 
-const mudarAprovacao = (funcaoService, mensagemErro) => async (req, res) => {
-  try {
-    const usuario = await usuarioService[funcaoService](req.params.id);
+const mudarAprovacao = (funcaoService) => async (req, res) => {
+  const usuario = await usuarioService[funcaoService](req.params.id);
 
-    if (!usuario) {
-      return res.status(404).json({
-        mensagem: "Usuário não encontrado",
-      });
-    }
-
-    return res.status(200).json(usuario);
-  } catch (erro) {
-    return tratarErro(res, erro, mensagemErro);
+  if (!usuario) {
+    throw new AppError("Usuário não encontrado", 404);
   }
+
+  return res.status(200).json(usuario);
 };
 
-const aprovar = mudarAprovacao("aprovar", "Erro ao aprovar usuário");
+const aprovar = mudarAprovacao("aprovar");
 
-const reprovar = mudarAprovacao("reprovar", "Erro ao reprovar usuário");
+const reprovar = mudarAprovacao("reprovar");
 
 const buscarPorId = async (req, res) => {
-  try{
-    const usuario = await usuarioService.buscarPorId(req.params.id)
+  const usuario = await usuarioService.buscarPorId(req.params.id);
 
-    if (!usuario) {
-      return res.status(404).json({
-        mensagem: "Usuário não encontrado",
-      });
-    }
-    return res.status(200).json(usuario);
-  } catch (erro) {
-    return tratarErro(res, erro, "Erro ao buscar usuário");
+  if (!usuario) {
+    throw new AppError("Usuário não encontrado", 404);
   }
+
+  return res.status(200).json(usuario);
 };
 
 export default {
@@ -132,4 +83,5 @@ export default {
   buscarPorId,
   aprovar,
   reprovar,
+  reenviarSenha,
 };

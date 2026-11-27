@@ -3,6 +3,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import questionarioRoutes from "../routes/questionarioRoutes.js";
 import visitaRoutes from "../routes/visitaRoutes.js";
+import errorHandler from "../middlewares/errorHandler.js";
 import questionarioService from "../services/questionarioService.js";
 import visitaService from "../services/visitaService.js";
 
@@ -58,6 +59,7 @@ beforeAll(async () => {
   app.use(express.json());
   app.use("/questionario", questionarioRoutes);
   app.use("/visitas", visitaRoutes);
+  app.use(errorHandler);
 
   await new Promise((resolve) => {
     servidor = app.listen(0, resolve);
@@ -100,14 +102,14 @@ describe("POST /visitas/:id/respostas", () => {
     expect(await resposta.json()).toEqual([{ id: 1, pergunta_id: 1 }]);
   });
 
-  it("responde 404 para fiscalizador não associado, sem salvar", async () => {
+  it("responde 403 para fiscalizador não associado, sem salvar", async () => {
     visitaService.buscarParaAcesso.mockResolvedValue(visitaDoFiscalizador5);
 
     const resposta = await requisitar("POST", "/visitas/10/respostas", "fiscalizador", 6, {
       respostas,
     });
 
-    expect(resposta.status).toBe(404);
+    expect(resposta.status).toBe(403);
     expect(questionarioService.salvarRespostas).not.toHaveBeenCalled();
   });
 
@@ -150,7 +152,7 @@ describe("POST /visitas/:id/respostas", () => {
 
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toEqual({
-      mensagem: "Erro ao salvar respostas",
+      mensagem: "Há respostas inválidas",
       erros: ["A pergunta 99 não existe"],
     });
   });
@@ -271,11 +273,13 @@ describe("respostas da visita por URL composta", () => {
       expect(questionarioService.listarDaVisita).toHaveBeenCalledWith(10);
     });
 
-    it("responde 404 para fiscal de outra visita", async () => {
+    it("responde 403 para fiscal de outra visita", async () => {
       const resposta = await requisitar("GET", "/visitas/10/respostas", "fiscalizador", 6);
 
-      expect(resposta.status).toBe(404);
-      expect(await resposta.json()).toEqual({ mensagem: "Visita não encontrada" });
+      expect(resposta.status).toBe(403);
+      expect(await resposta.json()).toEqual({
+        mensagem: "Você não tem permissão para acessar esta visita.",
+      });
       expect(questionarioService.listarDaVisita).not.toHaveBeenCalled();
     });
 
@@ -304,8 +308,8 @@ describe("respostas da visita por URL composta", () => {
       expect(await resposta.json()).toEqual({ mensagem: "Resposta não encontrada" });
     });
 
-    it("responde 404 para fiscal de outra visita", async () => {
-      expect((await requisitar("GET", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(404);
+    it("responde 403 para fiscal de outra visita", async () => {
+      expect((await requisitar("GET", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(403);
       expect(questionarioService.buscarDaVisita).not.toHaveBeenCalled();
     });
   });
@@ -321,25 +325,28 @@ describe("respostas da visita por URL composta", () => {
       expect(questionarioService.atualizarDaVisita).toHaveBeenCalledWith(10, 3, "Não");
     });
 
-    it("responde 404 para fiscal de outra visita", async () => {
+    it("responde 403 para fiscal de outra visita", async () => {
       const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 6, {
         resposta: "Não",
       });
 
-      expect(resposta.status).toBe(404);
+      expect(resposta.status).toBe(403);
       expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
     });
 
+    const MENSAGEM_RESPOSTA = "A resposta deve ser um texto preenchido";
+    const MENSAGEM_CORPO = "O corpo da requisição deve ser um objeto JSON";
+
     it.each([
-      [{}, ["A resposta deve ser um texto preenchido"]],
-      [{ resposta: "   " }, ["A resposta deve ser um texto preenchido"]],
-      [{ resposta: 5 }, ["A resposta deve ser um texto preenchido"]],
-      [[{ resposta: "Sim" }], ["O corpo da requisição deve ser um objeto JSON"]],
-    ])("responde 400 no mesmo padrão do POST para corpo %j", async (corpo, erros) => {
+      [{}, MENSAGEM_RESPOSTA],
+      [{ resposta: "   " }, MENSAGEM_RESPOSTA],
+      [{ resposta: 5 }, MENSAGEM_RESPOSTA],
+      [[{ resposta: "Sim" }], MENSAGEM_CORPO],
+    ])("responde 400 no mesmo padrão do POST para corpo %j", async (corpo, mensagem) => {
       const resposta = await requisitar("PUT", "/visitas/10/respostas/3", "fiscalizador", 5, corpo);
 
       expect(resposta.status).toBe(400);
-      expect(await resposta.json()).toEqual({ mensagem: "Dados inválidos", erros });
+      expect(await resposta.json()).toEqual({ mensagem });
       expect(visitaService.buscarParaAcesso).not.toHaveBeenCalled();
       expect(questionarioService.atualizarDaVisita).not.toHaveBeenCalled();
     });
@@ -369,8 +376,7 @@ describe("respostas da visita por URL composta", () => {
 
       expect(resposta.status).toBe(400);
       expect(await resposta.json()).toEqual({
-        mensagem: "Erro ao atualizar resposta",
-        erros: ["O documento da visita já foi gerado; as respostas não podem mais ser alteradas"],
+        mensagem: "O documento da visita já foi gerado; as respostas não podem mais ser alteradas",
       });
     });
   });
@@ -389,8 +395,8 @@ describe("respostas da visita por URL composta", () => {
       expect((await requisitar("DELETE", "/visitas/10/respostas/30", "fiscalizador", 5)).status).toBe(404);
     });
 
-    it("responde 404 para fiscal de outra visita", async () => {
-      expect((await requisitar("DELETE", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(404);
+    it("responde 403 para fiscal de outra visita", async () => {
+      expect((await requisitar("DELETE", "/visitas/10/respostas/3", "fiscalizador", 6)).status).toBe(403);
       expect(questionarioService.removerDaVisita).not.toHaveBeenCalled();
     });
   });
@@ -432,7 +438,7 @@ describe("respostas da visita por URL composta", () => {
     const resposta = await requisitar("GET", "/visitas/10/respostas", "admin", 1);
 
     expect(resposta.status).toBe(500);
-    expect(await resposta.json()).toEqual({ mensagem: "Erro ao listar respostas" });
+    expect(await resposta.json()).toEqual({ mensagem: "Erro interno do servidor" });
     consoleError.mockRestore();
   });
 });
