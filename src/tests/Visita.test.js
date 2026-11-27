@@ -750,7 +750,7 @@ describe("associações do modelo Visita", () => {
       through: modelsMock.VisitaFiscalizador,
       foreignKey: "visita_id",
       otherKey: "fiscalizador_id",
-      as: "fiscalizadores",
+      as: { singular: "fiscalizador", plural: "fiscalizadores" },
     });
 
     expect(hasManySpy).toHaveBeenCalledWith(modelsMock.RespostaQuestionario, {
