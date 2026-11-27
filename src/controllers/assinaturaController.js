@@ -1,7 +1,6 @@
 import { waitUntil } from "@vercel/functions";
-import assinaturaService from "../services/assinaturaService.js";
-import documentoService from "../services/documentoService.js";
-import AppError from "../utils/appError.js";
+import { assinaturaService, documentoService } from "../services/index.js";
+import { AppError } from "../utils/index.js";
 
 const ID_VALIDO = /^[1-9]\d{0,9}$/;
 

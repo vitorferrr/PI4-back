@@ -1,7 +1,8 @@
 import jwt from "jsonwebtoken";
 import Sequelize from "sequelize";
-import AppError from "../utils/appError.js";
-import authService from "../services/authService.js";
+import { env } from "../config/index.js";
+import { AppError } from "../utils/index.js";
+import { authService } from "../services/index.js";
 
 const bancoIndisponivel = (erro) =>
   erro instanceof Sequelize.ConnectionError || erro instanceof Sequelize.TimeoutError;
@@ -22,7 +23,7 @@ const criarAutenticacao = ({ aoEncontrarSessaoEncerrada, aoEncontrarTokenVencido
   let payload;
 
   try {
-    payload = jwt.verify(token, process.env.JWT_SECRET);
+    payload = jwt.verify(token, env.JWT_SECRET);
   } catch (erro) {
     if (erro.name === "TokenExpiredError" && aoEncontrarTokenVencido) {
       return aoEncontrarTokenVencido(res, next);

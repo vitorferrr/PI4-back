@@ -1,17 +1,34 @@
 import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
+import { env, validarEnv } from "./config/index.js";
 import { sequelize } from "./models/index.js";
-import usuarioRoutes from "./routes/usuarioRoutes.js";
-import authRoutes from "./routes/authRoutes.js";
-import visitaRoutes from "./routes/visitaRoutes.js";
-import questionarioRoutes from "./routes/questionarioRoutes.js";
-import adminRoutes from "./routes/adminRoutes.js";
-import documentoRoutes from "./routes/documentoRoutes.js";
-import errorHandler from "./middlewares/errorHandler.js";
-import notFoundMiddleware from "./middlewares/notFound.js";
-import { limiterMiddleware } from "./middlewares/rateLimiter.js";
-import corsMiddleware from "./middlewares/cors.js";
+import {
+  adminRoutes,
+  authRoutes,
+  documentoRoutes,
+  questionarioRoutes,
+  usuarioRoutes,
+  visitaRoutes,
+} from "./routes/index.js";
+import {
+  corsMiddleware,
+  errorHandler,
+  limiterMiddleware,
+  notFoundMiddleware,
+} from "./middlewares/index.js";
+
+// DT-35: confere as variáveis antes de tudo. Local: mostra o que falta e encerra
+// (process.exit lá embaixo). Na Vercel o processo não pode encerrar, então toda
+// requisição responde 503 até a configuração ser corrigida.
+let erroAmbiente = null;
+
+try {
+  validarEnv();
+} catch (erro) {
+  erroAmbiente = erro;
+  console.error(erro.message);
+}
 
 const app = express();
 
@@ -23,6 +40,12 @@ app.use(limiterMiddleware);
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(async (req, res, next) => {
+  if (erroAmbiente) {
+    return res.status(503).json({
+      mensagem: "Servidor com configuração incompleta. Avise o responsável pelo deploy.",
+    });
+  }
+
   try {
     await conectarBanco();
     next();
@@ -48,9 +71,8 @@ app.use(notFoundMiddleware);
 
 app.use(errorHandler);
 
-const port = process.env.PORT || 3000;
-const eraseDatabaseOnSync =
-  process.env.ERASE_DATABASE_ON_SYNC === "true" && !process.env.VERCEL;
+const port = env.PORT;
+const eraseDatabaseOnSync = env.ERASE_DATABASE_ON_SYNC && !env.VERCEL;
 
 let conexao;
 
@@ -64,14 +86,14 @@ const conectarBanco = () => {
   return conexao;
 };
 
-const ready = conectarBanco()
+const ready = (erroAmbiente ? Promise.reject(erroAmbiente) : conectarBanco())
   .then(() => {
-    if (!process.env.VERCEL) {
+    if (!env.VERCEL) {
       app.listen(port, () => console.log(`Servidor rodando na porta ${port}!`));
     }
   })
   .catch((erro) => {
-    if (!process.env.VERCEL) process.exit(1);
+    if (!env.VERCEL) process.exit(1);
     throw erro;
   });
 

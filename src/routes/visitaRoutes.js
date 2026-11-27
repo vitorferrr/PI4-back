@@ -1,29 +1,28 @@
 import { Router } from "express";
-import visitaController from "../controllers/visitaController.js";
-import questionarioController from "../controllers/questionarioController.js";
-import documentoController from "../controllers/documentoController.js";
-import autenticar from "../middlewares/authMiddleware.js";
-import autorizar from "../middlewares/roleMiddleware.js";
-import validarId, {
-  validarIdParametro,
-  validarParametroId,
-} from "../middlewares/validarIdMiddleware.js";
-import validate from "../middlewares/validate.js";
 import {
-  verificarAcessoVisita,
-  verificarGestorVisita,
-} from "../middlewares/ownershipMiddleware.js";
+  documentoController,
+  questionarioController,
+  visitaController,
+} from "../controllers/index.js";
 import {
   adicionarFiscalizadorSchema,
   atualizarRespostaSchema,
   atualizarVisitaSchema,
+  autenticar,
+  autorizar,
   criarVisitaSchema,
   iniciarVisitaSchema,
   listarVisitasSchema,
   observacoesVisitaSchema,
   salvarRespostasSchema,
   substituirFiscalizadoresSchema,
-} from "../middlewares/validationSchemas.js";
+  validarId,
+  validarIdParametro,
+  validarParametroId,
+  validate,
+  verificarAcessoVisita,
+  verificarGestorVisita,
+} from "../middlewares/index.js";
 
 const router = Router();
 

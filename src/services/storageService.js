@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getStorageContext } from "../config/supabase.js";
+import { getStorageContext } from "../config/index.js";
 
 const EXTENSOES = new Map([
   ["image/png", "png"],

@@ -1,4 +1,4 @@
-import emailValido from "../utils/emailValido.js";
+import { emailValido } from "../utils/index.js";
 
 const getAssinaturaModel = (sequelize, { DataTypes, Op }) => {
   const Assinatura = sequelize.define(

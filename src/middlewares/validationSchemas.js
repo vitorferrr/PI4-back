@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { validarListaRespostas } from "../utils/validarRespostas.js";
+import { validarListaRespostas } from "../utils/index.js";
 
 const ROLES_VALIDAS = ["admin", "gestor", "fiscalizador"];
 const STATUS_VISITA_VALIDOS = ["agendada", "em_andamento", "concluida", "cancelada"];
