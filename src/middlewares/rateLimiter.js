@@ -1,5 +1,5 @@
 import rateLimit from "express-rate-limit";
-import AppError from "../utils/appError.js";
+import { AppError } from "../utils/index.js";
 
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
 

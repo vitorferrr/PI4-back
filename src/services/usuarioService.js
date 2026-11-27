@@ -1,8 +1,5 @@
-import bcrypt from "bcrypt";
 import models, { sequelize } from "../models/index.js";
-import AppError from "../utils/appError.js";
-import gerarSenha from "../utils/gerarSenha.js";
-import normalizarEmail from "../utils/normalizarEmail.js";
+import { AppError, gerarHashSenha, gerarSenha, normalizarEmail } from "../utils/index.js";
 import { enviarSenhaGerada } from "./emailService.js";
 
 const { Usuario } = models;
@@ -35,7 +32,7 @@ const criar = async (dados, { transaction } = {}) => {
       throw erro;
     }
 
-  const senha_hash = await bcrypt.hash(senha, 10);
+  const senha_hash = await gerarHashSenha(senha);
 
   const usuario = await Usuario.create({
     nome,
@@ -107,7 +104,7 @@ const reenviarSenha = async (id, autorId) =>
         throw erroValidacao("Este cadastro não está aprovado. Aprove o usuário antes de reenviar a senha.");
       }
 
-      await usuario.update({ senha_hash: await bcrypt.hash(senha, 10) }, { transaction });
+      await usuario.update({ senha_hash: await gerarHashSenha(senha) }, { transaction });
 
       return semSenha(usuario);
     }
@@ -184,7 +181,7 @@ const atualizar = async (id, dados) => {
   }
 
   if (dados.senha) {
-    dadosAtualizados.senha_hash = await bcrypt.hash(dados.senha, 10);
+    dadosAtualizados.senha_hash = await gerarHashSenha(dados.senha);
   }
 
   await usuario.update(dadosAtualizados);

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import bcrypt from "bcrypt";
+import argon2 from "argon2";
 import models, { sequelize } from "../models/index.js";
 import usuarioService from "../services/usuarioService.js";
 import { enviarSenhaGerada } from "../services/emailService.js";
@@ -37,7 +37,7 @@ describe("cadastro com senha gerada", () => {
     const { senha } = enviarSenhaGerada.mock.calls[0][0];
 
     expect(senha).toMatch(/^[A-Z2-9]{12}$/);
-    expect(await bcrypt.compare(senha, salvo.senha_hash)).toBe(true);
+    expect(await argon2.verify(salvo.senha_hash, senha)).toBe(true);
     expect(Usuario.create).toHaveBeenCalledWith(expect.objectContaining({ email: "carla@exemplo.com" }), {
       transaction: transacao,
     });
@@ -116,7 +116,7 @@ describe("reenvio de senha", () => {
 
     expect(Usuario.findByPk).toHaveBeenCalledWith(7, { transaction: transacao, lock: "UPDATE" });
     expect(usuario.update).toHaveBeenCalledWith({ senha_hash: expect.any(String) }, { transaction: transacao });
-    expect(await bcrypt.compare(senha, novoHash)).toBe(true);
+    expect(await argon2.verify(novoHash, senha)).toBe(true);
     expect(enviarSenhaGerada).toHaveBeenCalledWith({
       para: "carla@exemplo.com",
       nome: "Carla Mendes",

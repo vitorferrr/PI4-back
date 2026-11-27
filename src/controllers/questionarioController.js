@@ -1,6 +1,5 @@
-import questionarioService from "../services/questionarioService.js";
-import AppError from "../utils/appError.js";
-import { erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
+import { questionarioService } from "../services/index.js";
+import { AppError, erroVisitaNaoEncontrada } from "../utils/index.js";
 
 const erroPerguntaNaoEncontrada = () => new AppError("Pergunta não encontrada", 404);
 

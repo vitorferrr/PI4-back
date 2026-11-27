@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
+import gerarHashSenha from "../utils/hashSenha.js";
 import authRoutes from "../routes/authRoutes.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import usuarioService from "../services/usuarioService.js";
@@ -26,7 +26,6 @@ vi.mock("../models/index.js", () => {
   };
 });
 vi.mock("../services/usuarioService.js", () => ({ default: { criar: vi.fn() } }));
-vi.mock("bcrypt", () => ({ default: { compare: vi.fn() } }));
 // O limite de login (5 tentativas) tem teste próprio; aqui ele deixa tudo passar.
 vi.mock("../middlewares/rateLimiter.js", () => ({
   authLimiterMiddleware: (req, res, next) => next(),
@@ -210,9 +209,8 @@ describe("POST /auth/login", () => {
       nome: "Bia",
       email: "bia@exemplo.com",
       role: "gestor",
-      senha_hash: "hash-qualquer",
+      senha_hash: await gerarHashSenha(credenciais.senha),
     });
-    bcrypt.compare.mockResolvedValue(true);
 
     const resposta = await requisitar("/login", credenciais);
     const corpo = await resposta.json();
@@ -225,8 +223,7 @@ describe("POST /auth/login", () => {
   });
 
   it("responde 401 para senha errada, sem criar refresh token", async () => {
-    Usuario.findOne.mockResolvedValue({ id: 1, senha_hash: "hash-qualquer" });
-    bcrypt.compare.mockResolvedValue(false);
+    Usuario.findOne.mockResolvedValue({ id: 1, senha_hash: await gerarHashSenha("outra-senha") });
 
     const resposta = await requisitar("/login", credenciais);
 

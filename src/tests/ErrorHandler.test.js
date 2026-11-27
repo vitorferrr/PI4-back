@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import errorHandler, { criarErroHttp } from "../middlewares/errorHandler.js";
+import errorHandler from "../middlewares/errorHandler.js";
+import { criarErroHttp } from "../utils/tratarErro.js";
 import AppError from "../utils/appError.js";
 
 const criarRes = () => {

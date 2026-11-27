@@ -1,6 +1,5 @@
-import visitaService from "../services/visitaService.js";
-import AppError from "../utils/appError.js";
-import { erroVisitaNaoEncontrada } from "../utils/acessoVisita.js";
+import { visitaService } from "../services/index.js";
+import { AppError, erroVisitaNaoEncontrada } from "../utils/index.js";
 
 const MENSAGEM_REFERENCIA_INVALIDA =
   "Gestor ou fiscalizador informado não existe no sistema.";

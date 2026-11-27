@@ -1,4 +1,4 @@
-import AppError from "../utils/appError.js";
+import { AppError } from "../utils/index.js";
 
 const ID_MAXIMO = 2147483647;
 
