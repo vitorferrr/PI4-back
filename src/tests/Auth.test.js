@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import argon2 from "argon2";
+import gerarHashSenha from "../utils/hashSenha.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Sequelize from "sequelize";
@@ -197,6 +198,49 @@ describe("login (authService)", () => {
         "Falha ao migrar hash de senha para Argon2:",
         "banco fora"
       );
+    });
+  });
+
+  describe("revisão da PR: falhas do Argon2 no log e hash fictício", () => {
+    const parametros = (hash) => hash.split("$").slice(1, 4).join("$");
+
+    it("o hash fictício usa os mesmos parâmetros (versão, m, t, p) da função que gera o hash das senhas reais", async () => {
+      const verifySpy = vi.spyOn(argon2, "verify");
+      Usuario.findOne.mockResolvedValue(null);
+
+      await expect(
+        authService.login({ email: "fantasma@exemplo.com", senha: "qualquer" })
+      ).rejects.toMatchObject({ statusCode: 401 });
+
+      const [hashFicticio] = verifySpy.mock.calls[0];
+      const hashReal = await gerarHashSenha("uma-senha-de-verdade");
+      expect(parametros(hashFicticio)).toBe(parametros(hashReal));
+      verifySpy.mockRestore();
+    });
+
+    it("falha do argon2.verify ainda responde 401, mas registra no log", async () => {
+      const usuario = { id: 1, senha_hash: await argon2.hash("certa"), update: vi.fn() };
+      Usuario.findOne.mockResolvedValue(usuario);
+      const verifySpy = vi.spyOn(argon2, "verify").mockRejectedValueOnce(new Error("sem memória"));
+
+      await expect(authService.login({ email: "bia@exemplo.com", senha: "certa" })).rejects.toMatchObject({
+        statusCode: 401,
+      });
+      expect(console.error).toHaveBeenCalledWith("Falha ao verificar senha:", "sem memória");
+      verifySpy.mockRestore();
+    });
+
+    it("falha do bcrypt.compare no hash antigo responde 401, registra no log e não migra", async () => {
+      const usuario = { id: 1, senha_hash: await bcrypt.hash("certa", 4), update: vi.fn() };
+      Usuario.findOne.mockResolvedValue(usuario);
+      const compareSpy = vi.spyOn(bcrypt, "compare").mockRejectedValueOnce(new Error("hash corrompido"));
+
+      await expect(authService.login({ email: "bia@exemplo.com", senha: "certa" })).rejects.toMatchObject({
+        statusCode: 401,
+      });
+      expect(console.error).toHaveBeenCalledWith("Falha ao verificar senha:", "hash corrompido");
+      expect(usuario.update).not.toHaveBeenCalled();
+      compareSpy.mockRestore();
     });
   });
 

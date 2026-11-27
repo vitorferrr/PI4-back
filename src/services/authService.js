@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 import argon2 from "argon2";
+// bcryptjs só confere hashes antigos (antes do Argon2) para migrá-los no login.
+// Pode sair quando esta consulta der 0 (ou o admin reenviar a senha de quem faltar):
+//   select count(*) from usuarios where senha_hash like '$2%';
 import bcrypt from "bcryptjs";
 import Sequelize from "sequelize";
 import jwt from "jsonwebtoken";
 import models from "../models/index.js";
 import AppError from "../utils/appError.js";
 import erroValidacao from "../utils/erroValidacao.js";
+import gerarHashSenha from "../utils/hashSenha.js";
 import normalizarEmail from "../utils/normalizarEmail.js";
 import usuarioService from "./usuarioService.js";
 
@@ -17,20 +21,47 @@ const SENHA_MAXIMA = 72;
 
 const HASH_BCRYPT_REGEX = /^\$2[aby]?\$/;
 
-// Hash fictício fixo (sem senha real por trás), só pra gastar o mesmo tempo
-// do argon2.verify quando o e-mail não existe — sem isso, a resposta do login
-// fica mais rápida pra e-mails inexistentes, revelando quais contas existem.
-const HASH_FICTICIO =
-  "$argon2id$v=19$m=65536,t=3,p=4$6PW5hYfUBvJ8NIUMpPkVDQ$vL4IJ5+2FfqT66vJj/O0et5ra1Jz2J3nvBRK8xCb3so";
+// Falha real do Argon2/bcrypt (falta de memória, erro do módulo nativo) continua
+// virando "senha inválida" para o usuário, mas fica registrada no log.
+const falhaAoVerificar = (erro) => {
+  console.error("Falha ao verificar senha:", erro.message);
+  return false;
+};
+
+// Hash fictício (sem senha real por trás), só pra gastar o mesmo tempo do
+// argon2.verify quando o e-mail não existe — sem isso, a resposta do login fica
+// mais rápida pra e-mails inexistentes, revelando quais contas existem.
+// É gerado pela mesma função das senhas reais (utils/hashSenha.js), então usa
+// sempre os mesmos parâmetros, mesmo se um dia mudarem. Começa a ser gerado na subida; se
+// falhar, o próximo login tenta de novo.
+let hashFicticio;
+const obterHashFicticio = () => {
+  hashFicticio ??= gerarHashSenha(randomUUID()).catch((erro) => {
+    hashFicticio = undefined;
+    throw erro;
+  });
+  return hashFicticio;
+};
+obterHashFicticio().catch(() => {});
+
+const verificarContraHashFicticio = async (senha) => {
+  try {
+    await argon2.verify(await obterHashFicticio(), senha);
+  } catch (erro) {
+    falhaAoVerificar(erro);
+  }
+  // o hash fictício não corresponde a nenhuma senha: o login sempre falha
+  return false;
+};
 
 // Migra hash de bcrypt (versão anterior ao Argon2) pra Argon2 no primeiro
 // login bem-sucedido do usuário, sem precisar de reset manual de senha.
 const verificarSenha = async (usuario, senha) => {
   if (HASH_BCRYPT_REGEX.test(usuario.senha_hash)) {
-    const senhaCorreta = await bcrypt.compare(senha, usuario.senha_hash).catch(() => false);
+    const senhaCorreta = await bcrypt.compare(senha, usuario.senha_hash).catch(falhaAoVerificar);
 
     if (senhaCorreta) {
-      const senha_hash = await argon2.hash(senha);
+      const senha_hash = await gerarHashSenha(senha);
       await usuario.update({ senha_hash }).catch((erro) => {
         console.error("Falha ao migrar hash de senha para Argon2:", erro.message);
       });
@@ -39,7 +70,7 @@ const verificarSenha = async (usuario, senha) => {
     return senhaCorreta;
   }
 
-  return argon2.verify(usuario.senha_hash, senha).catch(() => false);
+  return argon2.verify(usuario.senha_hash, senha).catch(falhaAoVerificar);
 };
 
 const erroAutenticacao = () => new AppError("Email ou senha inválidos", 401);
@@ -81,7 +112,7 @@ const login = async (dados = {}) => {
   // gastar um tempo parecido e não revelar quais e-mails estão cadastrados.
   const senhaCorreta = usuario
     ? await verificarSenha(usuario, senha)
-    : await argon2.verify(HASH_FICTICIO, senha).catch(() => false);
+    : await verificarContraHashFicticio(senha);
 
   if (!senhaCorreta) {
     throw erroAutenticacao();

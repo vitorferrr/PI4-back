@@ -1,7 +1,7 @@
-import argon2 from "argon2";
 import models, { sequelize } from "../models/index.js";
 import AppError from "../utils/appError.js";
 import gerarSenha from "../utils/gerarSenha.js";
+import gerarHashSenha from "../utils/hashSenha.js";
 import normalizarEmail from "../utils/normalizarEmail.js";
 import { enviarSenhaGerada } from "./emailService.js";
 
@@ -35,7 +35,7 @@ const criar = async (dados, { transaction } = {}) => {
       throw erro;
     }
 
-  const senha_hash = await argon2.hash(senha);
+  const senha_hash = await gerarHashSenha(senha);
 
   const usuario = await Usuario.create({
     nome,
@@ -107,7 +107,7 @@ const reenviarSenha = async (id, autorId) =>
         throw erroValidacao("Este cadastro não está aprovado. Aprove o usuário antes de reenviar a senha.");
       }
 
-      await usuario.update({ senha_hash: await argon2.hash(senha) }, { transaction });
+      await usuario.update({ senha_hash: await gerarHashSenha(senha) }, { transaction });
 
       return semSenha(usuario);
     }
@@ -184,7 +184,7 @@ const atualizar = async (id, dados) => {
   }
 
   if (dados.senha) {
-    dadosAtualizados.senha_hash = await argon2.hash(dados.senha);
+    dadosAtualizados.senha_hash = await gerarHashSenha(dados.senha);
   }
 
   await usuario.update(dadosAtualizados);
