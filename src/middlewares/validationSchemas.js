@@ -250,6 +250,12 @@ export const signupSchema = z.object({
   ),
 });
 
+export const refreshSchema = z.object({
+  body: corpoSchema({
+    refreshToken: textoPreenchidoSchema("O refreshToken é obrigatório"),
+  }),
+});
+
 const perguntaCampos = {
   texto: textoPreenchidoSchema("O texto da pergunta é obrigatório"),
   tipo_resposta: z.enum(TIPOS_RESPOSTA, {

@@ -10,21 +10,28 @@ import authController from "../controllers/authController.js";
 import autenticar, { autenticarLogout } from "../middlewares/authMiddleware.js";
 import autorizar from "../middlewares/roleMiddleware.js";
 import errorHandler from "../middlewares/errorHandler.js";
+import AppError from "../utils/appError.js";
 
 vi.mock("../models/index.js", () => ({
   default: {
     Usuario: {
       findOne: vi.fn(),
+      findByPk: vi.fn(),
     },
     TokenRevogado: {
       findOne: vi.fn(),
       bulkCreate: vi.fn(),
       destroy: vi.fn(),
     },
+    RefreshToken: {
+      create: vi.fn(),
+      findOne: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }));
 
-const { TokenRevogado, Usuario } = models;
+const { RefreshToken, TokenRevogado, Usuario } = models;
 const SEGREDO = "segredo-de-teste";
 
 const criarRes = () => {
@@ -45,6 +52,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.JWT_SECRET = SEGREDO;
   vi.spyOn(console, "error").mockImplementation(() => {});
+  RefreshToken.create.mockResolvedValue({ id: 1 });
 });
 
 describe("login (authService)", () => {
@@ -69,13 +77,17 @@ describe("login (authService)", () => {
     });
     expect(payload).toMatchObject({ id: 1, role: "gestor" });
     expect(payload.jti).toMatch(/^[0-9a-f-]{36}$/);
-    expect(payload.exp - payload.iat).toBe(3600);
+    expect(payload.exp - payload.iat).toBe(900);
     expect(resultado.usuario).toEqual({
       id: 1,
       nome: "Bia",
       email: "bia@exemplo.com",
       role: "gestor",
     });
+    expect(resultado.refreshToken).toMatch(/^[\w-]{40,}$/);
+    expect(RefreshToken.create).toHaveBeenCalledWith(
+      expect.objectContaining({ usuario_id: 1 })
+    );
   });
 
   it("procura o email sem espaços e em minúsculas", async () => {
@@ -261,6 +273,122 @@ describe("login (authService)", () => {
   });
 });
 
+describe("refresh (authService)", () => {
+  const SEGREDOS_HASH = /^[0-9a-f]{64}$/;
+
+  it("troca um refresh token válido por um novo par e marca o antigo como usado", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      id: 10,
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn().mockResolvedValue(),
+    });
+    Usuario.findByPk.mockResolvedValue({ id: 1, nome: "Bia", email: "bia@exemplo.com", role: "gestor" });
+
+    const resultado = await authService.refresh("token-recebido-do-cliente");
+
+    const [{ where }] = RefreshToken.findOne.mock.calls[0];
+    expect(where.token_hash).toMatch(SEGREDOS_HASH);
+    const registro = await RefreshToken.findOne.mock.results[0].value;
+    expect(registro.update).toHaveBeenCalledWith({ usado_em: expect.any(Date) });
+    expect(resultado.usuario).toEqual({ id: 1, nome: "Bia", email: "bia@exemplo.com", role: "gestor" });
+    expect(resultado.refreshToken).not.toBe("token-recebido-do-cliente");
+  });
+
+  it("rejeita token inexistente, vazio ou que não é texto, sem consultar o banco quando vazio", async () => {
+    for (const valor of [undefined, "", "   ", 123]) {
+      await expect(authService.refresh(valor)).rejects.toMatchObject({ statusCode: 401, message: "Sessão expirada. Faça login novamente." });
+    }
+    expect(RefreshToken.findOne).not.toHaveBeenCalled();
+
+    RefreshToken.findOne.mockResolvedValue(null);
+    await expect(authService.refresh("token-desconhecido")).rejects.toMatchObject({
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
+    });
+  });
+
+  it("rejeita token vencido", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() - 1000),
+      update: vi.fn(),
+    });
+
+    await expect(authService.refresh("token-vencido")).rejects.toMatchObject({
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
+    });
+  });
+
+  it("recusa um refresh token já usado e revoga toda a sessão do usuário (reuso = possível roubo)", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      usuario_id: 1,
+      usado_em: new Date(),
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn(),
+    });
+
+    await expect(authService.refresh("token-reusado")).rejects.toMatchObject({
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
+    });
+
+    expect(RefreshToken.update).toHaveBeenCalledWith(
+      { revogado_em: expect.any(Date) },
+      { where: { usuario_id: 1, usado_em: null, revogado_em: null } }
+    );
+  });
+
+  it("recusa um refresh token já revogado", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: new Date(),
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn(),
+    });
+
+    await expect(authService.refresh("token-revogado")).rejects.toMatchObject({
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
+    });
+  });
+
+  it("rejeita quando o usuário do token não existe mais", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      usuario_id: 99,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn(),
+    });
+    Usuario.findByPk.mockResolvedValue(null);
+
+    await expect(authService.refresh("token-de-usuario-removido")).rejects.toMatchObject({
+      statusCode: 401, message: "Sessão expirada. Faça login novamente.",
+    });
+  });
+
+  it("bloqueia e revoga o token de cadastro ainda não aprovado", async () => {
+    const registro = {
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn().mockResolvedValue(),
+    };
+    RefreshToken.findOne.mockResolvedValue(registro);
+    Usuario.findByPk.mockResolvedValue({ id: 1, aprovado: false });
+
+    await expect(authService.refresh("token-pendente")).rejects.toMatchObject({
+      statusCode: 403, message: "Cadastro aguardando aprovação de um administrador",
+    });
+    expect(registro.update).toHaveBeenCalledWith({ revogado_em: expect.any(Date) });
+  });
+});
+
 describe("middleware autenticar", () => {
   it("aceita token válido e coloca o usuário na requisição", () => {
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO);
@@ -390,31 +518,48 @@ describe("middleware autenticar com logout", () => {
     expect(next).not.toHaveBeenCalledWith();
   });
 
-  it("no logout, token já encerrado responde 204 sem passar adiante", async () => {
+  // DT-38: no logout o pedido segue para o controller mesmo com o access token já
+  // encerrado ou vencido, para revogar o refresh token enviado no corpo.
+  it("no logout, token já encerrado segue para o controller, sem consultar a lista de revogados", async () => {
     TokenRevogado.findOne.mockResolvedValue({ id: 1 });
     const token = jwt.sign({ id: 1, role: "admin" }, SEGREDO, { jwtid: "abc" });
+    const req = requisicaoCom(token);
     const res = criarRes();
-    res.send = vi.fn(() => res);
-    const next = encaminharErro(res);
+    const next = vi.fn();
 
-    await autenticarLogout(requisicaoCom(token), res, next);
+    await autenticarLogout(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(204);
-    expect(next).not.toHaveBeenCalledWith();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+    expect(req.usuario).toMatchObject({ id: 1, jti: "abc" });
   });
 
-  it("no logout, token vencido pelo tempo responde 204 sem consultar o banco", async () => {
+  it("no logout, token vencido pelo tempo segue para o controller com o usuário do token", async () => {
     const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, SEGREDO, {
       jwtid: "abc",
     });
+    const req = requisicaoCom(token);
     const res = criarRes();
-    res.send = vi.fn(() => res);
+    const next = vi.fn();
+
+    await autenticarLogout(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+    expect(req.usuario).toMatchObject({ id: 1, role: "admin" });
+  });
+
+  it("no logout, token vencido com assinatura falsa continua respondendo 401", async () => {
+    const token = jwt.sign({ id: 1, role: "admin", exp: Math.floor(Date.now() / 1000) - 60 }, "outro-segredo");
+    const res = criarRes();
     const next = encaminharErro(res);
 
     await autenticarLogout(requisicaoCom(token), res, next);
 
-    expect(res.status).toHaveBeenCalledWith(204);
-    expect(TokenRevogado.findOne).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ mensagem: "Token inválido ou expirado" });
     expect(next).not.toHaveBeenCalledWith();
   });
 
@@ -462,6 +607,45 @@ describe("logout (authService)", () => {
 
     await expect(authService.logout({ jti: "abc", exp: 1_900_000_000 })).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalledWith("Falha ao limpar tokens revogados vencidos:", "banco lento");
+  });
+
+  it("revoga o refresh token informado", async () => {
+    await authService.logout({ jti: "abc", exp: 1_900_000_000 }, "refresh-do-cliente");
+
+    expect(RefreshToken.update).toHaveBeenCalledWith(
+      { revogado_em: expect.any(Date) },
+      {
+        where: {
+          token_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          usado_em: null,
+          revogado_em: null,
+        },
+      }
+    );
+  });
+
+  it("só revoga refresh token do próprio usuário do access token", async () => {
+    await authService.logout({ id: 7, jti: "abc", exp: 1_900_000_000 }, "refresh-do-cliente");
+
+    expect(RefreshToken.update).toHaveBeenCalledWith(
+      { revogado_em: expect.any(Date) },
+      { where: expect.objectContaining({ usuario_id: 7 }) }
+    );
+  });
+
+  it("token já vencido não entra na lista de revogados, mas o refresh é revogado", async () => {
+    const venceuHaUmMinuto = Math.floor(Date.now() / 1000) - 60;
+
+    await authService.logout({ id: 7, jti: "abc", exp: venceuHaUmMinuto }, "refresh-do-cliente");
+
+    expect(TokenRevogado.bulkCreate).not.toHaveBeenCalled();
+    expect(RefreshToken.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("não chama o RefreshToken quando nenhum refresh token é informado", async () => {
+    await authService.logout({ jti: "abc", exp: 1_900_000_000 });
+
+    expect(RefreshToken.update).not.toHaveBeenCalled();
   });
 });
 
@@ -518,6 +702,33 @@ describe("authController.login", () => {
     vi.spyOn(authService, "login").mockRejectedValueOnce(erro);
 
     await expect(authController.login(req, res)).rejects.toBe(erro);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+});
+
+describe("authController.refresh", () => {
+  it("retorna 200 e o novo par de tokens quando a troca é bem-sucedida", async () => {
+    const req = { body: { refreshToken: "refresh-valido" } };
+    const res = criarRes();
+    const novoPar = { token: "novo-access", refreshToken: "novo-refresh", usuario: { id: 1 } };
+
+    vi.spyOn(authService, "refresh").mockResolvedValueOnce(novoPar);
+
+    await authController.refresh(req, res);
+
+    expect(authService.refresh).toHaveBeenCalledWith("refresh-valido");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(novoPar);
+  });
+
+  it("deixa o erro do authService subir para o middleware global de erro", async () => {
+    const req = { body: { refreshToken: "refresh-invalido" } };
+    const res = criarRes();
+    const erro = new AppError("Sessão expirada. Faça login novamente.", 401);
+
+    vi.spyOn(authService, "refresh").mockRejectedValueOnce(erro);
+
+    await expect(authController.refresh(req, res)).rejects.toBe(erro);
     expect(res.status).not.toHaveBeenCalled();
   });
 });

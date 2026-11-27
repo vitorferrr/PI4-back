@@ -5,6 +5,7 @@ import {
   authLimiterMiddleware,
   autenticarLogout,
   loginSchema,
+  refreshSchema,
   signupSchema,
   validate,
 } from "../middlewares/index.js";
@@ -18,5 +19,13 @@ router.post(
 );
 router.post("/signup", validate(signupSchema), authController.signup);
 router.post("/logout", autenticarLogout, authController.logout);
+// Sem autenticar: o access token já pode estar vencido; a identidade vem do
+// próprio refresh token.
+router.post(
+  "/refresh",
+  authLimiterMiddleware,
+  validate(refreshSchema),
+  authController.refresh
+);
 
 export default router;

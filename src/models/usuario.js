@@ -60,6 +60,12 @@ const getUsuarioModel = (sequelize, { DataTypes }) => {
       otherKey: "visita_id",
       as: "visitasFiscalizadas",
     });
+
+    Usuario.hasMany(models.RefreshToken, {
+      foreignKey: "usuario_id",
+      as: "refreshTokens",
+      onDelete: "CASCADE",
+    });
   };
 
   return Usuario;

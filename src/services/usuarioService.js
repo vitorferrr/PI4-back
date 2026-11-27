@@ -2,7 +2,7 @@ import models, { sequelize } from "../models/index.js";
 import { AppError, gerarHashSenha, gerarSenha, normalizarEmail } from "../utils/index.js";
 import { enviarSenhaGerada } from "./emailService.js";
 
-const { Usuario } = models;
+const { Usuario, RefreshToken } = models;
 
 const semSenha = (usuario) => {
   const { senha_hash, ...dados } = usuario.toJSON();
@@ -17,6 +17,23 @@ const erroValidacao = (mensagem) => {
   return erro;
 };
 
+const revogarRefreshTokensUsuario = async (usuarioId, transaction) => {
+  if (!RefreshToken) {
+    return;
+  }
+
+  await RefreshToken.update(
+    { revogado_em: new Date() },
+    {
+      where: {
+        usuario_id: usuarioId,
+        revogado_em: null,
+      },
+      transaction,
+    }
+  );
+};
+
 const criar = async (dados, { transaction } = {}) => {
   const { nome, senha, role, matricula, aprovado } = dados;
   const email = normalizarEmail(dados.email);
@@ -25,23 +42,26 @@ const criar = async (dados, { transaction } = {}) => {
     throw erroValidacao("A senha é obrigatória");
   }
 
-   const existente = await Usuario.findOne({ where: { email }, transaction });
-   if (existente) {
-      const erro = erroValidacao("Email já cadastrado");
-      erro.codigo = "EMAIL_CADASTRADO";
-      throw erro;
-    }
+  const existente = await Usuario.findOne({ where: { email }, transaction });
+  if (existente) {
+    const erro = erroValidacao("Email já cadastrado");
+    erro.codigo = "EMAIL_CADASTRADO";
+    throw erro;
+  }
 
   const senha_hash = await gerarHashSenha(senha);
 
-  const usuario = await Usuario.create({
-    nome,
-    email,
-    senha_hash,
-    role,
-    matricula,
-    ...(aprovado !== undefined && { aprovado }),
-  }, { transaction });
+  const usuario = await Usuario.create(
+    {
+      nome,
+      email,
+      senha_hash,
+      role,
+      matricula,
+      ...(aprovado !== undefined && { aprovado }),
+    },
+    { transaction }
+  );
 
   return semSenha(usuario);
 };
@@ -105,6 +125,7 @@ const reenviarSenha = async (id, autorId) =>
       }
 
       await usuario.update({ senha_hash: await gerarHashSenha(senha) }, { transaction });
+      await revogarRefreshTokensUsuario(usuario.id, transaction);
 
       return semSenha(usuario);
     }
@@ -162,12 +183,6 @@ const buscarPorId = async (id) => {
 };
 
 const atualizar = async (id, dados) => {
-  const usuario = await Usuario.findByPk(id);
-
-  if (!usuario) {
-    return null;
-  }
-
   const dadosAtualizados = {};
 
   ["nome", "email", "role", "matricula"].forEach((campo) => {
@@ -180,13 +195,29 @@ const atualizar = async (id, dados) => {
     dadosAtualizados.email = normalizarEmail(dadosAtualizados.email);
   }
 
-  if (dados.senha) {
+  const trocouSenha = Boolean(dados.senha);
+  if (trocouSenha) {
     dadosAtualizados.senha_hash = await gerarHashSenha(dados.senha);
   }
 
-  await usuario.update(dadosAtualizados);
+  return await sequelize.transaction(async (transaction) => {
+    const usuario = await Usuario.findByPk(id, {
+      transaction,
+      ...(trocouSenha && { lock: transaction.LOCK.UPDATE }),
+    });
 
-  return semSenha(usuario);
+    if (!usuario) {
+      return null;
+    }
+
+    await usuario.update(dadosAtualizados, { transaction });
+
+    if (trocouSenha) {
+      await revogarRefreshTokensUsuario(usuario.id, transaction);
+    }
+
+    return semSenha(usuario);
+  });
 };
 
 const remover = async (id) => {

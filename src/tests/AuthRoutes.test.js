@@ -2,21 +2,26 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import jwt from "jsonwebtoken";
+import gerarHashSenha from "../utils/hashSenha.js";
 import authRoutes from "../routes/authRoutes.js";
 import autenticar from "../middlewares/authMiddleware.js";
 import usuarioService from "../services/usuarioService.js";
+import models from "../models/index.js";
+
+const { RefreshToken, Usuario } = models;
 import errorHandler from "../middlewares/errorHandler.js";
 
 vi.mock("../models/index.js", () => {
   const revogados = new Set();
   return {
     default: {
-      Usuario: { findOne: vi.fn() },
+      Usuario: { findOne: vi.fn(), findByPk: vi.fn() },
       TokenRevogado: {
         findOne: vi.fn(async ({ where }) => (revogados.has(where.jti) ? { id: 1 } : null)),
         bulkCreate: vi.fn(async (linhas) => linhas.forEach(({ jti }) => revogados.add(jti))),
         destroy: vi.fn(async () => 0),
       },
+      RefreshToken: { create: vi.fn(), findOne: vi.fn(), update: vi.fn() },
     },
   };
 });
@@ -78,6 +83,7 @@ afterAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   usuarioService.criar.mockResolvedValue(usuarioCriado);
+  RefreshToken.create.mockResolvedValue({ id: 1 });
 });
 
 describe("POST /auth/signup", () => {
@@ -194,6 +200,87 @@ describe("POST /auth/signup", () => {
   });
 });
 
+describe("POST /auth/login", () => {
+  const credenciais = { email: "bia@exemplo.com", senha: "1234" };
+
+  it("responde 200 com access token curto e refresh token", async () => {
+    Usuario.findOne.mockResolvedValue({
+      id: 1,
+      nome: "Bia",
+      email: "bia@exemplo.com",
+      role: "gestor",
+      senha_hash: await gerarHashSenha(credenciais.senha),
+    });
+
+    const resposta = await requisitar("/login", credenciais);
+    const corpo = await resposta.json();
+
+    expect(resposta.status).toBe(200);
+    const payload = jwt.verify(corpo.token, SEGREDO);
+    expect(payload.exp - payload.iat).toBe(900);
+    expect(corpo.refreshToken).toMatch(/^[\w-]{40,}$/);
+    expect(corpo.usuario).toEqual({ id: 1, nome: "Bia", email: "bia@exemplo.com", role: "gestor" });
+  });
+
+  it("responde 401 para senha errada, sem criar refresh token", async () => {
+    Usuario.findOne.mockResolvedValue({ id: 1, senha_hash: await gerarHashSenha("outra-senha") });
+
+    const resposta = await requisitar("/login", credenciais);
+
+    expect(resposta.status).toBe(401);
+    expect(RefreshToken.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /auth/refresh", () => {
+  it("troca um refresh token válido por um novo par", async () => {
+    RefreshToken.findOne.mockResolvedValue({
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn().mockResolvedValue(),
+    });
+    Usuario.findByPk.mockResolvedValue({ id: 1, nome: "Bia", email: "bia@exemplo.com", role: "gestor" });
+
+    const resposta = await requisitar("/refresh", { refreshToken: "refresh-valido" });
+    const corpo = await resposta.json();
+
+    expect(resposta.status).toBe(200);
+    expect(corpo.refreshToken).toBeTypeOf("string");
+    expect(corpo.token).toBeTypeOf("string");
+  });
+
+  it("responde 401 pra refresh token desconhecido", async () => {
+    RefreshToken.findOne.mockResolvedValue(null);
+
+    const resposta = await requisitar("/refresh", { refreshToken: "refresh-desconhecido" });
+
+    expect(resposta.status).toBe(401);
+  });
+
+  it("responde 401 e não deixa reusar um refresh token já trocado", async () => {
+    const registro = {
+      usuario_id: 1,
+      usado_em: null,
+      revogado_em: null,
+      expira_em: new Date(Date.now() + 1000 * 60 * 60),
+      update: vi.fn().mockResolvedValue(),
+    };
+    RefreshToken.findOne.mockResolvedValueOnce(registro);
+    Usuario.findByPk.mockResolvedValue({ id: 1, nome: "Bia", email: "bia@exemplo.com", role: "gestor" });
+
+    const primeira = await requisitar("/refresh", { refreshToken: "refresh-unico" });
+    expect(primeira.status).toBe(200);
+
+    registro.usado_em = new Date();
+    RefreshToken.findOne.mockResolvedValueOnce(registro);
+
+    const segunda = await requisitar("/refresh", { refreshToken: "refresh-unico" });
+    expect(segunda.status).toBe(401);
+  });
+});
+
 describe("POST /auth/login (loginSchema)", () => {
   it.each([[{}], [{ email: "ana@exemplo.com" }], [{ senha: "x" }], [{ email: "", senha: "x" }], [undefined]])(
     "responde 400 sem chegar no service quando falta email ou senha (%#)",
@@ -263,5 +350,45 @@ describe("POST /auth/logout", () => {
     ["com token inválido", "abc"],
   ])("responde 401 %s", async (_, token) => {
     expect((await requisitar("/logout", undefined, token)).status).toBe(401);
+  });
+
+  it("com o access token vencido, ainda revoga o refresh token do corpo (do próprio usuário)", async () => {
+    const vencido = jwt.sign(
+      { id: 9, role: "fiscalizador", exp: Math.floor(Date.now() / 1000) - 60 },
+      SEGREDO,
+      { jwtid: randomUUID() }
+    );
+
+    const resposta = await requisitar("/logout", { refreshToken: "refresh-do-cliente" }, vencido);
+
+    expect(resposta.status).toBe(204);
+    expect(RefreshToken.update).toHaveBeenCalledWith(
+      { revogado_em: expect.any(Date) },
+      expect.objectContaining({ where: expect.objectContaining({ usuario_id: 9 }) })
+    );
+  });
+
+  it("repetindo o logout (access token já encerrado), ainda revoga o refresh token do corpo", async () => {
+    const token = novaSessao();
+    await requisitar("/logout", undefined, token);
+    RefreshToken.update.mockClear();
+
+    const repeticao = await requisitar("/logout", { refreshToken: "refresh-do-cliente" }, token);
+
+    expect(repeticao.status).toBe(204);
+    expect(RefreshToken.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("revoga o refresh token enviado no corpo", async () => {
+    const token = novaSessao();
+
+    await requisitar("/logout", { refreshToken: "refresh-do-cliente" }, token);
+
+    expect(RefreshToken.update).toHaveBeenCalledWith(
+      { revogado_em: expect.any(Date) },
+      expect.objectContaining({
+        where: expect.objectContaining({ usado_em: null, revogado_em: null }),
+      })
+    );
   });
 });
